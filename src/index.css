@@ -186,6 +186,7 @@
   }
 
   .bottom-nav-item.active {
-    @apply text-primary bg-primary/8;
+    @apply text-primary;
+    background-color: hsl(var(--primary) / 0.08);
   }
 }
