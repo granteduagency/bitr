@@ -43,7 +43,7 @@ export default function AdminPage() {
   };
 
   const fetchData = async (table: string) => {
-    const { data: d } = await supabase.from(table).select('*, clients(name, phone)').order('created_at', { ascending: false });
+    const { data: d } = await (supabase.from(table as any).select('*, clients(name, phone)') as any).order('created_at', { ascending: false });
     setData(d || []);
   };
 
