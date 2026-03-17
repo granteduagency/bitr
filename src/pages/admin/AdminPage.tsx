@@ -57,10 +57,10 @@ export default function AdminPage() {
     let total = 0, pending = 0, completed = 0, today = 0;
     const todayStr = new Date().toISOString().split('T')[0];
     for (const tbl of tables) {
-      const { count: c1 } = await supabase.from(tbl).select('*', { count: 'exact', head: true });
-      const { count: c2 } = await supabase.from(tbl).select('*', { count: 'exact', head: true }).eq('status', 'pending');
-      const { count: c3 } = await supabase.from(tbl).select('*', { count: 'exact', head: true }).eq('status', 'completed');
-      const { count: c4 } = await supabase.from(tbl).select('*', { count: 'exact', head: true }).gte('created_at', todayStr);
+      const { count: c1 } = await (supabase.from(tbl as any) as any).select('*', { count: 'exact', head: true });
+      const { count: c2 } = await (supabase.from(tbl as any) as any).select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      const { count: c3 } = await (supabase.from(tbl as any) as any).select('*', { count: 'exact', head: true }).eq('status', 'completed');
+      const { count: c4 } = await (supabase.from(tbl as any) as any).select('*', { count: 'exact', head: true }).gte('created_at', todayStr);
       total += c1 || 0; pending += c2 || 0; completed += c3 || 0; today += c4 || 0;
     }
     setStats({ total, pending, completed, today });
