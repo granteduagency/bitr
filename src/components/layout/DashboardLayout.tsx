@@ -1,6 +1,6 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Home, Shield, FileText, HeartPulse, Menu } from 'lucide-react';
+import { ArrowLeft, Home, Shield, FileText, HeartPulse, Menu, Briefcase } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -23,37 +23,46 @@ export function DashboardLayout() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-border/40 glass">
         <div className="container flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-2">
             {!isRoot && (
-              <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+              <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="rounded-xl hover:bg-primary/5">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             )}
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="lg:hidden">
+                <Button variant="ghost" size="icon" className="lg:hidden rounded-xl hover:bg-primary/5">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0">
-                <nav className="flex flex-col gap-1 p-4 pt-12">
-                  {navItems.map((item) => (
-                    <Button
-                      key={item.path}
-                      variant={location.pathname === item.path ? 'secondary' : 'ghost'}
-                      className="justify-start gap-3"
-                      onClick={() => { navigate(item.path); setOpen(false); }}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </Button>
-                  ))}
-                </nav>
+              <SheetContent side="left" className="w-72 p-0 border-0">
+                <div className="h-full bg-card">
+                  <div className="p-6 gradient-primary">
+                    <h2 className="font-heading font-extrabold text-xl text-primary-foreground">{t('landing.title')}</h2>
+                    <p className="text-sm text-primary-foreground/70 mt-1">{t('landing.subtitle')}</p>
+                  </div>
+                  <nav className="flex flex-col gap-1 p-4">
+                    {navItems.map((item) => {
+                      const isActive = location.pathname === item.path || (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
+                      return (
+                        <Button
+                          key={item.path}
+                          variant="ghost"
+                          className={`justify-start gap-3 h-12 rounded-xl font-medium transition-all ${isActive ? 'bg-primary/10 text-primary font-semibold' : 'hover:bg-muted'}`}
+                          onClick={() => { navigate(item.path); setOpen(false); }}
+                        >
+                          <item.icon className="h-5 w-5" />
+                          {item.label}
+                        </Button>
+                      );
+                    })}
+                  </nav>
+                </div>
               </SheetContent>
             </Sheet>
-            <h1 className="font-heading font-bold text-lg truncate">
+            <h1 className="font-heading font-extrabold text-lg tracking-tight truncate">
               {t('landing.title')}
             </h1>
           </div>
@@ -67,21 +76,19 @@ export function DashboardLayout() {
       </main>
 
       {/* Bottom Nav (Mobile) */}
-      <nav className="fixed bottom-0 left-0 right-0 border-t bg-card/95 backdrop-blur-md lg:hidden z-50">
-        <div className="flex items-center justify-around h-16">
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-border/40 glass lg:hidden z-50">
+        <div className="flex items-center justify-around h-16 px-2">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.path || 
+            const isActive = location.pathname === item.path ||
               (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
             return (
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`flex flex-col items-center gap-1 px-3 py-2 text-xs transition-colors ${
-                  isActive ? 'text-primary' : 'text-muted-foreground'
-                }`}
+                className={`bottom-nav-item ${isActive ? 'active' : 'text-muted-foreground'}`}
               >
-                <item.icon className="h-5 w-5" />
-                <span className="truncate max-w-[60px]">{item.label}</span>
+                <item.icon className={`h-5 w-5 transition-transform ${isActive ? 'scale-110' : ''}`} />
+                <span className="truncate max-w-[56px]">{item.label}</span>
               </button>
             );
           })}

@@ -1,6 +1,6 @@
 import { type LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
+import { motion } from 'framer-motion';
 
 interface ServiceCardProps {
   icon: LucideIcon;
@@ -8,9 +8,10 @@ interface ServiceCardProps {
   href: string;
   color: string;
   onClick?: () => void;
+  index?: number;
 }
 
-export function ServiceCard({ icon: Icon, title, href, color, onClick }: ServiceCardProps) {
+export function ServiceCard({ icon: Icon, title, href, color, onClick, index = 0 }: ServiceCardProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
@@ -22,19 +23,26 @@ export function ServiceCard({ icon: Icon, title, href, color, onClick }: Service
   };
 
   return (
-    <Card
-      className="cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-1 border-border/50 group"
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className="service-card"
       onClick={handleClick}
     >
-      <CardContent className="flex flex-col items-center justify-center p-6 gap-3 text-center">
+      <div className="flex flex-col items-center justify-center gap-3.5 text-center py-2">
         <div
-          className="w-14 h-14 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110"
-          style={{ backgroundColor: color + '15', color }}
+          className="w-14 h-14 rounded-2xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+          style={{
+            background: `linear-gradient(135deg, ${color}18, ${color}28)`,
+            color,
+            boxShadow: `0 4px 12px ${color}20`,
+          }}
         >
-          <Icon className="h-7 w-7" />
+          <Icon className="h-6 w-6" strokeWidth={2} />
         </div>
-        <span className="font-heading font-semibold text-sm leading-tight">{title}</span>
-      </CardContent>
-    </Card>
+        <span className="font-heading font-bold text-sm leading-tight">{title}</span>
+      </div>
+    </motion.div>
   );
 }
