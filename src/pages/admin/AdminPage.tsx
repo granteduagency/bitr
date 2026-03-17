@@ -75,7 +75,7 @@ export default function AdminPage() {
 
   const updateStatus = async (id: string, status: string) => {
     if (!tableMap[tab]) return;
-    await supabase.from(tableMap[tab]).update({ status }).eq('id', id);
+    await (supabase.from(tableMap[tab] as any) as any).update({ status }).eq('id', id);
     fetchData(tableMap[tab]);
     toast({ title: t('common.success') });
   };
