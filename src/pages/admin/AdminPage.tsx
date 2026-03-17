@@ -43,7 +43,7 @@ export default function AdminPage() {
   };
 
   const fetchData = async (table: string) => {
-    const { data: d } = await supabase.from(table).select('*, clients(name, phone)').order('created_at', { ascending: false });
+    const { data: d } = await (supabase.from(table as any).select('*, clients(name, phone)') as any).order('created_at', { ascending: false });
     setData(d || []);
   };
 
@@ -57,10 +57,10 @@ export default function AdminPage() {
     let total = 0, pending = 0, completed = 0, today = 0;
     const todayStr = new Date().toISOString().split('T')[0];
     for (const tbl of tables) {
-      const { count: c1 } = await supabase.from(tbl).select('*', { count: 'exact', head: true });
-      const { count: c2 } = await supabase.from(tbl).select('*', { count: 'exact', head: true }).eq('status', 'pending');
-      const { count: c3 } = await supabase.from(tbl).select('*', { count: 'exact', head: true }).eq('status', 'completed');
-      const { count: c4 } = await supabase.from(tbl).select('*', { count: 'exact', head: true }).gte('created_at', todayStr);
+      const { count: c1 } = await (supabase.from(tbl as any) as any).select('*', { count: 'exact', head: true });
+      const { count: c2 } = await (supabase.from(tbl as any) as any).select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      const { count: c3 } = await (supabase.from(tbl as any) as any).select('*', { count: 'exact', head: true }).eq('status', 'completed');
+      const { count: c4 } = await (supabase.from(tbl as any) as any).select('*', { count: 'exact', head: true }).gte('created_at', todayStr);
       total += c1 || 0; pending += c2 || 0; completed += c3 || 0; today += c4 || 0;
     }
     setStats({ total, pending, completed, today });
@@ -75,7 +75,7 @@ export default function AdminPage() {
 
   const updateStatus = async (id: string, status: string) => {
     if (!tableMap[tab]) return;
-    await supabase.from(tableMap[tab]).update({ status }).eq('id', id);
+    await (supabase.from(tableMap[tab] as any) as any).update({ status }).eq('id', id);
     fetchData(tableMap[tab]);
     toast({ title: t('common.success') });
   };
