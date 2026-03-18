@@ -1,6 +1,8 @@
 import { supabase } from "@/lib/supabase";
 
 export type AppointmentCheckType = "phone" | "email";
+const PDFJS_DIST_URL = "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
+const PDFJS_WORKER_URL = "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.worker.mjs";
 
 export type AppointmentParsedData = {
   registrationNumber: string | null;
@@ -69,6 +71,147 @@ export const normalizePhoneInput = (value: string) => {
   return digits;
 };
 
+const formatRegistrationNumber = (value: string) => {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length !== 13) {
+    return value.replace(/\s+/g, "").trim();
+  }
+
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+};
+
+const normalizeAppointmentText = (text: string) =>
+  text
+    .replace(/\u0131/g, "i")
+    .replace(/\u0130/g, "I")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const normalizeParsedEmail = (value?: string | null) => {
+  const email = (value || "").trim().toLowerCase();
+  if (!email) {
+    return null;
+  }
+
+  if (email.endsWith("@goc.gov.tr")) {
+    return null;
+  }
+
+  return email;
+};
+
+const normalizeParsedPhone = (value?: string | null) => {
+  const normalized = normalizePhoneInput(value || "");
+  if (normalized.length !== 10 || !normalized.startsWith("5")) {
+    return null;
+  }
+
+  return normalized;
+};
+
+const buildParsedAppointmentData = (input: {
+  registrationNumber?: string | null;
+  documentNumber?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  source: "pdf" | "image" | "manual";
+}): AppointmentParsedData => {
+  const parsed: AppointmentParsedData = {
+    registrationNumber: input.registrationNumber?.trim() || null,
+    documentNumber: input.documentNumber?.trim().toUpperCase() || null,
+    phone: normalizeParsedPhone(input.phone),
+    email: normalizeParsedEmail(input.email),
+    suggestedCheckType: null,
+    source: input.source,
+    warnings: [],
+  };
+
+  parsed.suggestedCheckType = suggestAppointmentCheckType(parsed.phone, parsed.email);
+
+  if (!parsed.registrationNumber) {
+    parsed.warnings.push("Registration number could not be extracted.");
+  }
+
+  if (!parsed.documentNumber) {
+    parsed.warnings.push("Document number could not be extracted.");
+  }
+
+  if (!parsed.phone && !parsed.email) {
+    parsed.warnings.push("Phone or email could not be extracted.");
+  }
+
+  return parsed;
+};
+
+export function extractAppointmentFieldsFromText(text: string): AppointmentParsedData {
+  const normalizedText = normalizeAppointmentText(text);
+
+  const registrationNumber =
+    normalizedText.match(
+      /(?:Registration\s*Number|Kayit\s*Numarasi)\s*(?:\([^)]*\))?\s*[:\-]?\s*(\d{4}(?:[-\s]?\d{2})(?:[-\s]?\d{7}))/i,
+    )?.[1] ||
+    normalizedText.match(/(\d{4}-\d{2}-\d{7})/)?.[1] ||
+    normalizedText.match(/(\d{13})/)?.[1] ||
+    null;
+
+  const documentNumber =
+    normalizedText.match(
+      /(?:Number\s*of\s*Document|Belge\s*No|Document)\s*[:\-]?\s*([A-Z]{1,2}\d{6,8})/i,
+    )?.[1] ||
+    normalizedText.match(/\b([A-Z]{1,2}\d{6,8})\b/)?.[1] ||
+    null;
+
+  const phone =
+    normalizedText.match(
+      /(?:Telefon\s*1|Phone\s*1|Telefon\s*Numarasi|Phone\s*Number)\s*[:\-]?\s*((?:\+?90\s*)?0?5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2})/i,
+    )?.[1] ||
+    normalizedText.match(/((?:\+?90\s*)?0?5\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2})/)?.[1] ||
+    null;
+
+  const email =
+    normalizedText.match(/E[-\s]?mail[:\s)]*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i)?.[1] ||
+    normalizedText.match(/E[-\s]?Posta[:\s)]*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i)?.[1] ||
+    normalizedText.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i)?.[1] ||
+    null;
+
+  return buildParsedAppointmentData({
+    registrationNumber: registrationNumber ? formatRegistrationNumber(registrationNumber) : null,
+    documentNumber,
+    phone,
+    email,
+    source: "pdf",
+  });
+}
+
+const extractPdfTextClient = async (file: File) => {
+  const pdfjs = await import(/* @vite-ignore */ PDFJS_DIST_URL);
+  pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+
+  const data = new Uint8Array(await file.arrayBuffer());
+  const loadingTask = pdfjs.getDocument({
+    data,
+    disableFontFace: true,
+    useSystemFonts: true,
+    isEvalSupported: false,
+  });
+
+  const pdf = await loadingTask.promise;
+  const chunks: string[] = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+
+    for (const item of content.items as Array<{ str?: string }>) {
+      if (typeof item.str === "string") {
+        chunks.push(item.str);
+      }
+    }
+  }
+
+  return chunks.join(" ");
+};
+
 export const formatPhoneForLookup = (value: string) => {
   const normalized = normalizePhoneInput(value);
   if (normalized.length !== 10) {
@@ -94,6 +237,26 @@ export const suggestAppointmentCheckType = (
 };
 
 export async function parseAppointmentFile(file: File): Promise<AppointmentParsedData> {
+  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+  if (isPdf) {
+    try {
+      const text = await extractPdfTextClient(file);
+      const parsed = extractAppointmentFieldsFromText(text);
+
+      if (
+        parsed.registrationNumber ||
+        parsed.documentNumber ||
+        parsed.phone ||
+        parsed.email
+      ) {
+        return parsed;
+      }
+    } catch {
+      // Fall through to the edge function parser when browser-side PDF parsing fails.
+    }
+  }
+
   const contentsBase64 = await fileToBase64(file);
   const { data, error } = await supabase.functions.invoke("randevu-check", {
     body: {

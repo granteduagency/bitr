@@ -14,7 +14,10 @@
     "https://esm.sh/@supabase/supabase-js@2.99.2/denonext/supabase-js.mjs": "c572f3d76a4b08266be4f82a61da5859fd45c6051791bfd9d4d75df867464342",
     "https://esm.sh/iceberg-js@0.8.1/denonext/iceberg-js.mjs": "d839d81a2e3966500ca2cdd0c1cb458e9608bacfc91f7bb67a69b2e878dcdb4f",
     "https://esm.sh/iceberg-js@0.8.1?target=denonext": "58c849d7fe2bf4eca4a84eb501e83c161a7d8c34ca1bec15a962b3bec3062633",
+    "https://esm.sh/pdfjs-dist@4.10.38/denonext/legacy/build/pdf.mjs": "e0d614ff07ee974b66e19ebbe96f3ad5a37a852ba2ccc0bc9185eec4617b9f54",
+    "https://esm.sh/pdfjs-dist@4.10.38/denonext/legacy/build/pdf.worker.mjs": "4064785b19d7c9097c652dc0fa758cc3701bd8f5917700bdb65b7977c8e5b8e0",
     "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.mjs": "5f5858fd93f59d17c4aecb835bfdec767ec272a67531ce923e350de04429ea30",
+    "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.worker.mjs": "87d93a37541b005d57b04a399ce81a00f710a1bfff4e16aa15ec9530ec9e08b3",
     "https://esm.sh/tslib@2.8.1/denonext/tslib.mjs": "c38da5dd6da6281964435002ce204cd586634fe3bdfb24a0ee116f48cf3292e9"
   },
   "workspace": {
