@@ -167,18 +167,59 @@ async function waitForDocumentReady(apiKey: string, documentId: string) {
   throw new HttpError(504, "DocuPipe document processing timed out.");
 }
 
-async function waitForStandardizationReady(apiKey: string, standardizationId: string) {
+async function waitForJobReady(apiKey: string, jobId: string, label: string) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const standardization = await docuPipeRequest<
-      { status?: string; data?: JsonRecord | null } & JsonRecord
-    >(apiKey, `/standardization/${standardizationId}`);
+    const job = await docuPipeRequest<{ status?: string; errorMessage?: string } & JsonRecord>(
+      apiKey,
+      `/job/${jobId}`,
+    );
 
-    if (standardization.status === "completed" || standardization.data) {
-      return standardization;
+    if (job.status === "completed") {
+      return job;
     }
 
-    if (standardization.status === "failed" || standardization.status === "error") {
-      throw new HttpError(502, "DocuPipe standardization failed.");
+    if (job.status === "failed" || job.status === "error") {
+      throw new HttpError(
+        502,
+        `${label} failed${typeof job.errorMessage === "string" ? `: ${job.errorMessage}` : "."}`,
+      );
+    }
+
+    await sleep(1500);
+  }
+
+  throw new HttpError(504, `${label} timed out.`);
+}
+
+async function waitForStandardizationReady(
+  apiKey: string,
+  standardizationId: string,
+  standardizationJobId?: string | null,
+) {
+  if (standardizationJobId) {
+    await waitForJobReady(apiKey, standardizationJobId, "DocuPipe standardization job");
+  }
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      const standardization = await docuPipeRequest<
+        { status?: string; data?: JsonRecord | null } & JsonRecord
+      >(apiKey, `/standardization/${standardizationId}`);
+
+      if (standardization.status === "completed" || standardization.data) {
+        return standardization;
+      }
+
+      if (standardization.status === "failed" || standardization.status === "error") {
+        throw new HttpError(502, "DocuPipe standardization failed.");
+      }
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) {
+        await sleep(1500);
+        continue;
+      }
+
+      throw error;
     }
 
     await sleep(1500);
@@ -310,7 +351,10 @@ Deno.serve(async (req) => {
 
       await waitForDocumentReady(apiKey, upload.documentId);
 
-      const standardize = await docuPipeRequest<{ standardizationIds?: string[] }>(
+      const standardize = await docuPipeRequest<{
+        standardizationIds?: string[];
+        standardizationJobIds?: string[];
+      }>(
         apiKey,
         "/v2/standardize/batch",
         {
@@ -323,16 +367,22 @@ Deno.serve(async (req) => {
       );
 
       const standardizationId = standardize.standardizationIds?.[0];
+      const standardizationJobId = standardize.standardizationJobIds?.[0];
       if (!standardizationId) {
         throw new HttpError(502, "DocuPipe did not return a standardization id.");
       }
 
-      const standardization = await waitForStandardizationReady(apiKey, standardizationId);
+      const standardization = await waitForStandardizationReady(
+        apiKey,
+        standardizationId,
+        standardizationJobId,
+      );
       const extraction = normalizePassportExtraction((standardization.data || {}) as JsonRecord);
 
       return jsonResponse({
         documentId: upload.documentId,
         standardizationId,
+        standardizationJobId,
         schemaId,
         extraction,
       });
