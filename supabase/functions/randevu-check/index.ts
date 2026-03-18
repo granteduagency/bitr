@@ -14,6 +14,8 @@ const CAPTCHA_MODEL = Deno.env.get("OPENROUTER_MODEL") || "google/gemma-3-27b-it
 const VISION_MODEL = Deno.env.get("OPENROUTER_VISION_MODEL") || CAPTCHA_MODEL;
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const APP_REFERER = Deno.env.get("APP_BASE_URL") || "http://localhost";
+const PDFJS_DIST_URL = "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
+const PDFJS_WORKER_URL = "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.worker.mjs";
 
 type AppointmentCheckType = "phone" | "email";
 
@@ -328,30 +330,57 @@ async function extractFromImage(file: {
   return extractJsonObject(response);
 }
 
-async function extractPdfText(fileBytes: Uint8Array) {
-  const pdfjs = await import("https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.mjs");
-  const loadingTask = pdfjs.getDocument({
-    data: fileBytes,
-    disableFontFace: true,
-    useSystemFonts: true,
-    isEvalSupported: false,
-  });
+function extractPdfTextFallback(fileBytes: Uint8Array) {
+  const rawText = new TextDecoder("latin1").decode(fileBytes);
+  const textChunks = Array.from(
+    rawText.matchAll(/\(([^()]*)\)\s*T[Jj]/g),
+    (match) => match[1]?.replace(/\\([()\\])/g, "$1") ?? "",
+  )
+    .map((chunk) => chunk.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
 
-  const pdf = await loadingTask.promise;
-  const chunks: string[] = [];
-
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-    const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
-
-    for (const item of content.items as Array<{ str?: string }>) {
-      if (typeof item.str === "string") {
-        chunks.push(item.str);
-      }
-    }
+  if (textChunks.length > 0) {
+    return textChunks.join(" ");
   }
 
-  return chunks.join(" ");
+  return rawText.replace(/[^\x20-\x7E\n\r]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+async function extractPdfText(fileBytes: Uint8Array) {
+  try {
+    const pdfjs = await import(PDFJS_DIST_URL);
+    pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+
+    const loadingTask = pdfjs.getDocument({
+      data: fileBytes,
+      disableFontFace: true,
+      useSystemFonts: true,
+      isEvalSupported: false,
+    });
+
+    const pdf = await loadingTask.promise;
+    const chunks: string[] = [];
+
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+
+      for (const item of content.items as Array<{ str?: string }>) {
+        if (typeof item.str === "string") {
+          chunks.push(item.str);
+        }
+      }
+    }
+
+    const extractedText = chunks.join(" ").trim();
+    if (extractedText) {
+      return extractedText;
+    }
+  } catch {
+    // Fall back to raw PDF text scanning when worker-based extraction is unavailable.
+  }
+
+  return extractPdfTextFallback(fileBytes);
 }
 
 function extractFromText(text: string) {
