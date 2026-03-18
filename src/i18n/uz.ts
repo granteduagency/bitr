@@ -81,6 +81,10 @@ export const uz = {
     uploadHint: "PDF yoki rasm yuklashingiz mumkin. Ajratilgan ma'lumotlarni yuborishdan oldin tahrirlash mumkin.",
     checkInfo: "Tekshiruv qanday ishlaydi?",
     checkInfoDesc: "Tizim registration number va document number orqali e-ikamet holatini tekshiradi. Telefon yoki email maydonidan bittasi to'g'ri bo'lishi kerak.",
+    debugTitle: "Jonli tekshiruv logi",
+    debugLive: "Har bir step va yuborilgan qiymatlar shu yerda ko'rinadi.",
+    debugFinished: "Tekshiruv tugadi. Barcha step loglari saqlandi.",
+    debugWaiting: "Tekshiruv boshlanganda loglar shu yerda chiqadi.",
     newCheck: "Yangi tekshiruv",
   },
   form: {

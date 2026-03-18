@@ -8,10 +8,9 @@ const E_IKAMET_BASE_URL = "https://e-ikamet.goc.gov.tr";
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/121.0";
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
+const MAX_WORKFLOW_CYCLES = 12;
 const RETRY_DELAY_MS = 1000;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
-const CAPTCHA_MODEL = Deno.env.get("OPENROUTER_MODEL") || "google/gemma-3-27b-it:free";
-const VISION_MODEL = Deno.env.get("OPENROUTER_VISION_MODEL") || CAPTCHA_MODEL;
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const APP_REFERER = Deno.env.get("APP_BASE_URL") || "http://localhost";
 const PDFJS_DIST_URL = "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
@@ -44,7 +43,32 @@ type AppointmentCheckResult = {
   checkedAt: string;
   parsedData: ParsedAppointmentData;
   randevuStatus: AppointmentCheckStatus | null;
+  debugTrace: AppointmentDebugStep[];
 };
+
+type AppointmentDebugStep = {
+  sequence: number;
+  timestamp: string;
+  attempt: number;
+  stage: string;
+  level: "info" | "success" | "error";
+  message: string;
+  data: Record<string, unknown> | null;
+};
+
+type AppointmentStreamEvent =
+  | {
+      type: "step";
+      step: AppointmentDebugStep;
+    }
+  | {
+      type: "result";
+      result: AppointmentCheckResult;
+    }
+  | {
+      type: "error";
+      error: string;
+    };
 
 type SessionData = {
   cookies: Record<string, string>;
@@ -99,10 +123,93 @@ const optionalString = (value: unknown) => {
   return normalized || null;
 };
 
+const parseEnvList = (value: string | undefined, fallback: string[]) => {
+  const items = (value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return items.length > 0 ? items : fallback;
+};
+
+const CAPTCHA_MODELS = parseEnvList(Deno.env.get("OPENROUTER_MODEL"), ["google/gemma-3-27b-it:free"]);
+const VISION_MODELS = parseEnvList(Deno.env.get("OPENROUTER_VISION_MODEL"), CAPTCHA_MODELS);
+
 const decodeBase64 = (base64: string) =>
   Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
 
 const digitsOnly = (value: string) => value.replace(/\D/g, "");
+
+const safeJsonValue = (value: unknown): unknown => {
+  if (value === undefined) {
+    return null;
+  }
+
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack || null,
+    };
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => safeJsonValue(item));
+  }
+
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, safeJsonValue(item)]),
+    );
+  }
+
+  return String(value);
+};
+
+const previewHtml = (html: string, maxLength = 800) =>
+  html
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+
+const createStepRecorder = (emit?: (event: AppointmentStreamEvent) => void) => {
+  const steps: AppointmentDebugStep[] = [];
+  let sequence = 0;
+
+  const log = (input: {
+    attempt?: number;
+    stage: string;
+    level: AppointmentDebugStep["level"];
+    message: string;
+    data?: Record<string, unknown> | null;
+  }) => {
+    sequence += 1;
+
+    const step: AppointmentDebugStep = {
+      sequence,
+      timestamp: new Date().toISOString(),
+      attempt: input.attempt ?? 0,
+      stage: input.stage,
+      level: input.level,
+      message: input.message,
+      data: (safeJsonValue(input.data || null) as Record<string, unknown> | null) ?? null,
+    };
+
+    steps.push(step);
+    console.log(`[randevu-check] ${JSON.stringify(step)}`);
+    emit?.({
+      type: "step",
+      step,
+    });
+    return step;
+  };
+
+  return { steps, log };
+};
 
 const normalizePhoneDigits = (value: string) => {
   const digits = digitsOnly(value);
@@ -222,49 +329,122 @@ const getOpenRouterKeys = () => {
   return keys;
 };
 
-async function callOpenRouter(requestBody: Record<string, unknown>) {
+async function callOpenRouter(
+  requestBody: Record<string, unknown>,
+  options?: {
+    log?: ReturnType<typeof createStepRecorder>["log"];
+    attempt?: number;
+    stage?: string;
+  },
+) {
   const keys = getOpenRouterKeys();
   let lastError = "OpenRouter request failed.";
+  const models = Array.isArray(requestBody.model)
+    ? requestBody.model.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : [String(requestBody.model || "")].filter(Boolean);
+  const requestWithoutModel = { ...requestBody };
+  delete requestWithoutModel.model;
 
-  for (const apiKey of keys) {
-    const response = await fetch(OPENROUTER_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": APP_REFERER,
-        "X-Title": "Bitrx Randevu Checker",
-      },
-      body: JSON.stringify(requestBody),
-    });
+  for (const model of models) {
+    for (const [keyIndex, apiKey] of keys.entries()) {
+      options?.log?.({
+        attempt: options.attempt ?? 0,
+        stage: options.stage || "openrouter.request",
+        level: "info",
+        message: "OpenRouter request started.",
+        data: {
+          model,
+          keyIndex,
+        },
+      });
 
-    const raw = await response.text();
+      const response = await fetch(OPENROUTER_API_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": APP_REFERER,
+          "X-Title": "Bitrx Randevu Checker",
+        },
+        body: JSON.stringify({
+          ...requestWithoutModel,
+          model,
+        }),
+      });
 
-    if (!response.ok) {
-      lastError = raw || response.statusText;
-      continue;
-    }
+      const raw = await response.text();
 
-    const parsed = JSON.parse(raw) as {
-      choices?: Array<{
-        message?: {
-          content?: string | Array<{ type?: string; text?: string }>;
+      if (!response.ok) {
+        lastError = raw || response.statusText;
+        options?.log?.({
+          attempt: options.attempt ?? 0,
+          stage: options.stage || "openrouter.request",
+          level: "error",
+          message: "OpenRouter request failed.",
+          data: {
+            model,
+            keyIndex,
+            status: response.status,
+            response: raw || response.statusText,
+          },
+        });
+
+        if (response.status === 429) {
+          await sleep(RETRY_DELAY_MS * 2);
+        }
+
+        continue;
+      }
+
+      const parsed = JSON.parse(raw) as {
+        choices?: Array<{
+          message?: {
+            content?: string | Array<{ type?: string; text?: string }>;
+          };
+        }>;
+      };
+
+      const content = parsed.choices?.[0]?.message?.content;
+      if (typeof content === "string") {
+        options?.log?.({
+          attempt: options.attempt ?? 0,
+          stage: options.stage || "openrouter.request",
+          level: "success",
+          message: "OpenRouter request succeeded.",
+          data: {
+            model,
+            keyIndex,
+          },
+        });
+        return {
+          content,
+          model,
+          keyIndex,
         };
-      }>;
-    };
+      }
 
-    const content = parsed.choices?.[0]?.message?.content;
-    if (typeof content === "string") {
-      return content;
-    }
-
-    if (Array.isArray(content)) {
-      const text = content
-        .map((item) => (item.type === "text" ? item.text || "" : ""))
-        .join("")
-        .trim();
-      if (text) {
-        return text;
+      if (Array.isArray(content)) {
+        const text = content
+          .map((item) => (item.type === "text" ? item.text || "" : ""))
+          .join("")
+          .trim();
+        if (text) {
+          options?.log?.({
+            attempt: options.attempt ?? 0,
+            stage: options.stage || "openrouter.request",
+            level: "success",
+            message: "OpenRouter request succeeded.",
+            data: {
+              model,
+              keyIndex,
+            },
+          });
+          return {
+            content: text,
+            model,
+            keyIndex,
+          };
+        }
       }
     }
   }
@@ -272,9 +452,13 @@ async function callOpenRouter(requestBody: Record<string, unknown>) {
   throw new HttpError(502, lastError);
 }
 
-async function solveCaptchaImage(imageBytes: Uint8Array) {
+async function solveCaptchaImage(
+  imageBytes: Uint8Array,
+  log: ReturnType<typeof createStepRecorder>["log"],
+  cycle: number,
+) {
   const response = await callOpenRouter({
-    model: CAPTCHA_MODEL,
+    model: CAPTCHA_MODELS,
     messages: [
       {
         role: "user",
@@ -294,9 +478,27 @@ async function solveCaptchaImage(imageBytes: Uint8Array) {
     ],
     max_tokens: 20,
     temperature: 0,
+  }, {
+    log,
+    attempt: cycle,
+    stage: "captcha.openrouter",
   });
 
-  return response.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 8);
+  const solvedText = response.content.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 8);
+  log({
+    attempt: cycle,
+    stage: "captcha.solve",
+    level: "success",
+    message: "Captcha solved by OpenRouter.",
+    data: {
+      model: response.model,
+      keyIndex: response.keyIndex,
+      captchaImageDataUrl: `data:image/gif;base64,${btoa(String.fromCharCode(...imageBytes))}`,
+      solvedText,
+    },
+  });
+
+  return solvedText;
 }
 
 async function extractFromImage(file: {
@@ -304,7 +506,7 @@ async function extractFromImage(file: {
   contentsBase64: string;
 }) {
   const response = await callOpenRouter({
-    model: VISION_MODEL,
+    model: VISION_MODELS,
     messages: [
       {
         role: "user",
@@ -327,7 +529,7 @@ async function extractFromImage(file: {
     temperature: 0,
   });
 
-  return extractJsonObject(response);
+  return extractJsonObject(response.content);
 }
 
 function extractPdfTextFallback(fileBytes: Uint8Array) {
@@ -501,7 +703,14 @@ async function parseAppointmentFile(payload: {
   throw new HttpError(400, "Only PDF or image files are supported.");
 }
 
-async function createSession() {
+async function createSession(log: ReturnType<typeof createStepRecorder>["log"], cycle: number) {
+  log({
+    attempt: cycle,
+    stage: "session.fetch",
+    level: "info",
+    message: "Fetching e-ikamet login page.",
+  });
+
   const response = await fetch(`${E_IKAMET_BASE_URL}/Ikamet/DevamEdenBasvuruGiris`, {
     method: "GET",
     headers: {
@@ -523,6 +732,19 @@ async function createSession() {
     throw new HttpError(502, "Could not initialize e-ikamet login page.");
   }
 
+  log({
+    attempt: cycle,
+    stage: "session.fetch",
+    level: "success",
+    message: "e-ikamet login page initialized.",
+    data: {
+      csrfToken,
+      captchaSrc,
+      captchaDeText,
+      pagePreview: previewHtml(html),
+    },
+  });
+
   const session: SessionData = {
     cookies: parseCookieStore(response.headers),
     csrfToken,
@@ -538,18 +760,41 @@ async function createSession() {
 const isSessionValid = (session: SessionData) =>
   Date.now() - session.createdAt < SESSION_TIMEOUT_MS;
 
-async function getSession() {
+async function getSession(log: ReturnType<typeof createStepRecorder>["log"], cycle: number) {
   if (sessionCache && isSessionValid(sessionCache)) {
+    log({
+      attempt: cycle,
+      stage: "session.cache",
+      level: "success",
+      message: "Reusing cached e-ikamet session.",
+      data: {
+        createdAt: new Date(sessionCache.createdAt).toISOString(),
+      },
+    });
     return sessionCache;
   }
 
-  return createSession();
+  return createSession(log, cycle);
 }
 
-async function loadCaptcha(session: SessionData) {
+async function loadCaptcha(
+  session: SessionData,
+  log: ReturnType<typeof createStepRecorder>["log"],
+  cycle: number,
+) {
   const captchaUrl = session.captchaSrc.startsWith("http")
     ? session.captchaSrc
     : `${E_IKAMET_BASE_URL}${session.captchaSrc}`;
+
+  log({
+    attempt: cycle,
+    stage: "captcha.fetch",
+    level: "info",
+    message: "Loading captcha image from e-ikamet.",
+    data: {
+      captchaUrl,
+    },
+  });
 
   const response = await fetch(captchaUrl, {
     headers: {
@@ -563,12 +808,27 @@ async function loadCaptcha(session: SessionData) {
     throw new HttpError(response.status, "Could not load captcha image.");
   }
 
-  return new Uint8Array(await response.arrayBuffer());
+  const captchaBytes = new Uint8Array(await response.arrayBuffer());
+  log({
+    attempt: cycle,
+    stage: "captcha.fetch",
+    level: "success",
+    message: "Captcha image loaded.",
+    data: {
+      captchaUrl,
+      byteLength: captchaBytes.byteLength,
+      captchaImageDataUrl: `data:image/gif;base64,${btoa(String.fromCharCode(...captchaBytes))}`,
+    },
+  });
+
+  return captchaBytes;
 }
 
 async function loginToEIkamet(
   session: SessionData,
   captchaText: string,
+  log: ReturnType<typeof createStepRecorder>["log"],
+  attempt: number,
   input: {
     registrationNumber: string;
     documentNumber: string;
@@ -586,6 +846,14 @@ async function loginToEIkamet(
     islemTur: -1,
     CaptchaInputText: captchaText,
     CaptchaDeText: session.captchaDeText,
+  });
+
+  log({
+    attempt,
+    stage: "goc.login.request",
+    level: "info",
+    message: "Sending lookup payload to e-ikamet.",
+    data: JSON.parse(body) as Record<string, unknown>,
   });
 
   const response = await fetch(`${E_IKAMET_BASE_URL}/Ikamet/DevamEdenBasvuruGiris/Ara`, {
@@ -608,7 +876,16 @@ async function loginToEIkamet(
   }
 
   session.cookies = mergeCookies(session.cookies, parseCookieStore(response.headers));
-  return (await response.json()) as LoginResponse;
+  const loginResponse = (await response.json()) as LoginResponse;
+  log({
+    attempt,
+    stage: "goc.login.response",
+    level: "success",
+    message: "Received e-ikamet login response.",
+    data: loginResponse as unknown as Record<string, unknown>,
+  });
+
+  return loginResponse;
 }
 
 function parseStatusPage(html: string): AppointmentCheckStatus {
@@ -635,7 +912,18 @@ function parseStatusPage(html: string): AppointmentCheckStatus {
   };
 }
 
-async function getAppointmentStatus(session: SessionData) {
+async function getAppointmentStatus(
+  session: SessionData,
+  log: ReturnType<typeof createStepRecorder>["log"],
+  attempt: number,
+) {
+  log({
+    attempt,
+    stage: "goc.status.options",
+    level: "info",
+    message: "Loading e-ikamet status options page.",
+  });
+
   const optionsResponse = await fetch(`${E_IKAMET_BASE_URL}/Ikamet/DevamEdenBasvuruSecenekler`, {
     headers: {
       "User-Agent": USER_AGENT,
@@ -650,13 +938,45 @@ async function getAppointmentStatus(session: SessionData) {
 
   const optionsHtml = await optionsResponse.text();
   if (optionsHtml.includes("Başvuru Durumunuz") || optionsHtml.includes("İkamet İzni Türü")) {
-    return parseStatusPage(optionsHtml);
+    const directStatus = parseStatusPage(optionsHtml);
+    log({
+      attempt,
+      stage: "goc.status.options",
+      level: "success",
+      message: "Status page was returned directly from options page.",
+      data: {
+        pagePreview: previewHtml(optionsHtml),
+        status: directStatus,
+      },
+    });
+    return directStatus;
   }
 
   const recordNumber = optionsHtml.match(/href="[^"]*basvuruKayitNo=(\d+)/)?.[1];
   if (!recordNumber) {
-    return parseStatusPage(optionsHtml);
+    const fallbackStatus = parseStatusPage(optionsHtml);
+    log({
+      attempt,
+      stage: "goc.status.options",
+      level: "success",
+      message: "Record number not found; parsed current page as final status.",
+      data: {
+        pagePreview: previewHtml(optionsHtml),
+        status: fallbackStatus,
+      },
+    });
+    return fallbackStatus;
   }
+
+  log({
+    attempt,
+    stage: "goc.status.detail",
+    level: "info",
+    message: "Loading detailed application status page.",
+    data: {
+      recordNumber,
+    },
+  });
 
   const statusResponse = await fetch(
     `${E_IKAMET_BASE_URL}/Ikamet/BasvuruDurum?basvuruKayitNo=${recordNumber}`,
@@ -673,7 +993,21 @@ async function getAppointmentStatus(session: SessionData) {
     throw new HttpError(statusResponse.status, "Could not load detailed application status.");
   }
 
-  return parseStatusPage(await statusResponse.text());
+  const statusHtml = await statusResponse.text();
+  const detailedStatus = parseStatusPage(statusHtml);
+  log({
+    attempt,
+    stage: "goc.status.detail",
+    level: "success",
+    message: "Detailed application status loaded.",
+    data: {
+      recordNumber,
+      pagePreview: previewHtml(statusHtml),
+      status: detailedStatus,
+    },
+  });
+
+  return detailedStatus;
 }
 
 async function checkAppointmentStatus(payload: {
@@ -683,7 +1017,9 @@ async function checkAppointmentStatus(payload: {
   phone?: string | null;
   email?: string | null;
   parsedData?: ParsedAppointmentData;
-}) {
+}, emit?: (event: AppointmentStreamEvent) => void) {
+  const recorder = createStepRecorder(emit);
+  const log = recorder.log;
   const registrationNumber = normalizeString(payload.registrationNumber);
   const documentNumber = normalizeString(payload.documentNumber).toUpperCase();
   const checkType = payload.checkType;
@@ -698,6 +1034,20 @@ async function checkAppointmentStatus(payload: {
     source: "manual" as const,
     warnings: [],
   };
+
+  log({
+    stage: "check.start",
+    level: "info",
+    message: "Appointment status check started.",
+    data: {
+      registrationNumber,
+      documentNumber,
+      checkType: checkType || null,
+      phone,
+      email,
+      parsedData,
+    },
+  });
 
   if (!registrationNumber || !documentNumber) {
     throw new HttpError(400, "Registration number and document number are required.");
@@ -718,24 +1068,61 @@ async function checkAppointmentStatus(payload: {
   const cacheKey = `${registrationNumber}:${documentNumber}:${checkType}:${phone || email || ""}`;
   const cached = resultCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
+    log({
+      stage: "check.cache",
+      level: "success",
+      message: "Returning cached appointment result.",
+      data: {
+        cacheKey,
+        expiresAt: new Date(cached.expiresAt).toISOString(),
+      },
+    });
+
+    const cachedResult = {
+      ...cached.value,
+      debugTrace: [...cached.value.debugTrace, ...recorder.steps],
+    };
+    return cachedResult;
   }
 
   let attempt = 0;
-  while (attempt < MAX_ATTEMPTS) {
-    attempt += 1;
+  let cycle = 0;
+  while (attempt < MAX_ATTEMPTS && cycle < MAX_WORKFLOW_CYCLES) {
+    cycle += 1;
 
     try {
-      const session = await getSession();
-      const captchaBytes = await loadCaptcha(session);
-      const captchaText = await solveCaptchaImage(captchaBytes);
+      log({
+        attempt,
+        stage: "cycle.start",
+        level: "info",
+        message: "Starting workflow cycle.",
+        data: {
+          cycle,
+          loginAttemptsUsed: attempt,
+        },
+      });
+
+      const session = await getSession(log, cycle);
+      const captchaBytes = await loadCaptcha(session, log, cycle);
+      const captchaText = await solveCaptchaImage(captchaBytes, log, cycle);
 
       if (!captchaText || captchaText.length < 6) {
         sessionCache = null;
+        log({
+          attempt,
+          stage: "captcha.invalid",
+          level: "error",
+          message: "Captcha solver returned an invalid value.",
+          data: {
+            cycle,
+            captchaText,
+          },
+        });
         continue;
       }
 
-      const loginResult = await loginToEIkamet(session, captchaText, {
+      attempt += 1;
+      const loginResult = await loginToEIkamet(session, captchaText, log, attempt, {
         registrationNumber,
         documentNumber,
         checkType,
@@ -745,6 +1132,18 @@ async function checkAppointmentStatus(payload: {
 
       if (loginResult.errors?.captchaInputText?.length) {
         sessionCache = null;
+        log({
+          attempt,
+          stage: "goc.login.captchaRejected",
+          level: "error",
+          message: "e-ikamet rejected the captcha value.",
+          data: {
+            cycle,
+            attempt,
+            captchaText,
+            errors: loginResult.errors,
+          },
+        });
         await sleep(RETRY_DELAY_MS);
         continue;
       }
@@ -762,7 +1161,20 @@ async function checkAppointmentStatus(payload: {
           checkedAt: new Date().toISOString(),
           parsedData,
           randevuStatus: null,
+          debugTrace: recorder.steps,
         };
+
+        log({
+          attempt,
+          stage: "goc.login.noResult",
+          level: "error",
+          message: "e-ikamet did not allow proceeding with the provided data.",
+          data: {
+            cycle,
+            attempt,
+            loginResult,
+          },
+        });
 
         resultCache.set(cacheKey, {
           value: failedResult,
@@ -771,7 +1183,7 @@ async function checkAppointmentStatus(payload: {
         return failedResult;
       }
 
-      const status = await getAppointmentStatus(session);
+      const status = await getAppointmentStatus(session, log, attempt);
       const result: AppointmentCheckResult = {
         success: true,
         checkType,
@@ -780,7 +1192,20 @@ async function checkAppointmentStatus(payload: {
         checkedAt: new Date().toISOString(),
         parsedData,
         randevuStatus: status,
+        debugTrace: recorder.steps,
       };
+
+      log({
+        attempt,
+        stage: "check.complete",
+        level: "success",
+        message: "Appointment status check completed successfully.",
+        data: {
+          cycle,
+          attempt,
+          status,
+        },
+      });
 
       resultCache.set(cacheKey, {
         value: result,
@@ -789,8 +1214,19 @@ async function checkAppointmentStatus(payload: {
       return result;
     } catch (error) {
       sessionCache = null;
+      log({
+        attempt,
+        stage: "cycle.error",
+        level: "error",
+        message: "Workflow cycle failed.",
+        data: {
+          cycle,
+          attempt,
+          error,
+        },
+      });
 
-      if (attempt >= MAX_ATTEMPTS) {
+      if (attempt >= MAX_ATTEMPTS || cycle >= MAX_WORKFLOW_CYCLES) {
         const message = error instanceof Error ? error.message : "Unknown error.";
         return {
           success: false,
@@ -800,23 +1236,69 @@ async function checkAppointmentStatus(payload: {
           checkedAt: new Date().toISOString(),
           parsedData,
           randevuStatus: null,
+          debugTrace: recorder.steps,
         } satisfies AppointmentCheckResult;
       }
 
-      await sleep(RETRY_DELAY_MS);
+      await sleep(RETRY_DELAY_MS * (error instanceof HttpError && error.status === 502 ? 2 : 1));
     }
   }
+
+  log({
+    attempt,
+    stage: "check.exhausted",
+    level: "error",
+    message: "Workflow finished without a successful result.",
+    data: {
+      attemptsUsed: attempt,
+      cyclesUsed: cycle,
+    },
+  });
 
   return {
     success: false,
     checkType,
-    attempts: MAX_ATTEMPTS,
-    error: `${MAX_ATTEMPTS} ta urinishdan keyin muvaffaqiyatsiz.`,
+    attempts: attempt,
+    error: `${attempt || 0} ta real login urinishidan keyin muvaffaqiyatsiz.`,
     checkedAt: new Date().toISOString(),
     parsedData,
     randevuStatus: null,
+    debugTrace: recorder.steps,
   } satisfies AppointmentCheckResult;
 }
+
+const streamResponse = (
+  handler: (emit: (event: AppointmentStreamEvent) => void) => Promise<void>,
+) =>
+  new Response(
+    new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        const emit = (event: AppointmentStreamEvent) => {
+          controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        };
+
+        try {
+          await handler(emit);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unexpected error.";
+          emit({
+            type: "error",
+            error: message,
+          });
+        } finally {
+          controller.close();
+        }
+      },
+    }),
+    {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+      },
+    },
+  );
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -851,6 +1333,16 @@ Deno.serve(async (req) => {
 
     if (action === "check") {
       return jsonResponse(await checkAppointmentStatus(payload));
+    }
+
+    if (action === "check-stream") {
+      return streamResponse(async (emit) => {
+        const result = await checkAppointmentStatus(payload, emit);
+        emit({
+          type: "result",
+          result,
+        });
+      });
     }
 
     throw new HttpError(400, "Unsupported action.");

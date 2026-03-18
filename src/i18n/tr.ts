@@ -81,6 +81,10 @@ export const tr = {
     uploadHint: "PDF veya görsel yükleyebilirsiniz. Ayıklanan bilgiler gönderimden önce düzenlenebilir.",
     checkInfo: "Kontrol nasıl çalışır?",
     checkInfoDesc: "Sistem registration number ve document number ile e-ikamet durumunu kontrol eder. Telefon veya e-posta alanlarından biri doğru olmalıdır.",
+    debugTitle: "Canlı kontrol logu",
+    debugLive: "Her adım ve gönderilen değerler burada görünür.",
+    debugFinished: "Kontrol tamamlandı. Tüm adım logları kaydedildi.",
+    debugWaiting: "Kontrol başladığında loglar burada görünecek.",
     newCheck: "Yeni kontrol",
   },
   form: {
