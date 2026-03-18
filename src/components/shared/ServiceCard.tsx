@@ -1,4 +1,4 @@
-import { type LucideIcon } from 'lucide-react';
+import { type LucideIcon, ArrowUpRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
@@ -7,11 +7,12 @@ interface ServiceCardProps {
   title: string;
   href: string;
   color: string;
+  bgColor: string;
   onClick?: () => void;
   index?: number;
 }
 
-export function ServiceCard({ icon: Icon, title, href, color, onClick, index = 0 }: ServiceCardProps) {
+export function ServiceCard({ icon: Icon, title, href, color, bgColor, onClick, index = 0 }: ServiceCardProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
@@ -26,22 +27,26 @@ export function ServiceCard({ icon: Icon, title, href, color, onClick, index = 0
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-      className="service-card"
+      transition={{ delay: index * 0.06, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+      className="relative overflow-hidden rounded-[1.5rem] p-5 cursor-pointer group transition-all duration-300 hover:shadow-lg hover:-translate-y-1 min-h-[180px] md:min-h-[200px] flex flex-col justify-between"
+      style={{ backgroundColor: bgColor }}
       onClick={handleClick}
     >
-      <div className="flex flex-col items-center justify-center gap-3.5 text-center py-2">
+      <div className="flex flex-col gap-2">
+        <Icon className="h-7 w-7 mb-1" style={{ color }} strokeWidth={1.8} />
+        <span className="font-heading font-bold text-[0.9rem] leading-snug text-slate-800">
+          {title}
+        </span>
+      </div>
+
+      {/* Arrow button */}
+      <div className="flex justify-end mt-3">
         <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
-          style={{
-            background: `linear-gradient(135deg, ${color}18, ${color}28)`,
-            color,
-            boxShadow: `0 4px 12px ${color}20`,
-          }}
+          className="w-9 h-9 rounded-full flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+          style={{ backgroundColor: color, color: '#fff' }}
         >
-          <Icon className="h-6 w-6" strokeWidth={2} />
+          <ArrowUpRight className="w-4 h-4" strokeWidth={2.5} />
         </div>
-        <span className="font-heading font-bold text-sm leading-tight">{title}</span>
       </div>
     </motion.div>
   );

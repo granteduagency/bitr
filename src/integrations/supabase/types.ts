@@ -211,6 +211,8 @@ export type Database = {
           id: string
           mother_name: string | null
           notes: string | null
+          passport_document_id: string | null
+          passport_extraction: Json | null
           passport_url: string | null
           phone: string | null
           photo_url: string | null
@@ -219,6 +221,8 @@ export type Database = {
           supporter_documents_url: string[] | null
           supporter_id_back_url: string | null
           supporter_id_front_url: string | null
+          supporter_passport_document_id: string | null
+          supporter_passport_extraction: Json | null
           supporter_passport_url: string | null
           supporter_student_cert_url: string | null
           supporter_type: string | null
@@ -238,6 +242,8 @@ export type Database = {
           id?: string
           mother_name?: string | null
           notes?: string | null
+          passport_document_id?: string | null
+          passport_extraction?: Json | null
           passport_url?: string | null
           phone?: string | null
           photo_url?: string | null
@@ -246,6 +252,8 @@ export type Database = {
           supporter_documents_url?: string[] | null
           supporter_id_back_url?: string | null
           supporter_id_front_url?: string | null
+          supporter_passport_document_id?: string | null
+          supporter_passport_extraction?: Json | null
           supporter_passport_url?: string | null
           supporter_student_cert_url?: string | null
           supporter_type?: string | null
@@ -265,6 +273,8 @@ export type Database = {
           id?: string
           mother_name?: string | null
           notes?: string | null
+          passport_document_id?: string | null
+          passport_extraction?: Json | null
           passport_url?: string | null
           phone?: string | null
           photo_url?: string | null
@@ -273,6 +283,8 @@ export type Database = {
           supporter_documents_url?: string[] | null
           supporter_id_back_url?: string | null
           supporter_id_front_url?: string | null
+          supporter_passport_document_id?: string | null
+          supporter_passport_extraction?: Json | null
           supporter_passport_url?: string | null
           supporter_student_cert_url?: string | null
           supporter_type?: string | null
@@ -338,6 +350,8 @@ export type Database = {
           documents_url: string[] | null
           from_language: string | null
           id: string
+          passport_document_id: string | null
+          passport_extraction: Json | null
           status: string | null
           to_language: string | null
         }
@@ -348,6 +362,8 @@ export type Database = {
           documents_url?: string[] | null
           from_language?: string | null
           id?: string
+          passport_document_id?: string | null
+          passport_extraction?: Json | null
           status?: string | null
           to_language?: string | null
         }
@@ -358,6 +374,8 @@ export type Database = {
           documents_url?: string[] | null
           from_language?: string | null
           id?: string
+          passport_document_id?: string | null
+          passport_extraction?: Json | null
           status?: string | null
           to_language?: string | null
         }
@@ -417,9 +435,17 @@ export type Database = {
           degree: string | null
           diploma_supplement_url: string | null
           diploma_url: string | null
+          external_university_city: string | null
+          external_university_country: string | null
+          external_university_id: string | null
+          external_university_name: string | null
+          external_university_website: string | null
+          external_workspace_id: string | null
           faculty: string | null
           id: string
           language: string | null
+          passport_document_id: string | null
+          passport_extraction: Json | null
           passport_url: string | null
           phone: string | null
           photo_url: string | null
@@ -433,9 +459,17 @@ export type Database = {
           degree?: string | null
           diploma_supplement_url?: string | null
           diploma_url?: string | null
+          external_university_city?: string | null
+          external_university_country?: string | null
+          external_university_id?: string | null
+          external_university_name?: string | null
+          external_university_website?: string | null
+          external_workspace_id?: string | null
           faculty?: string | null
           id?: string
           language?: string | null
+          passport_document_id?: string | null
+          passport_extraction?: Json | null
           passport_url?: string | null
           phone?: string | null
           photo_url?: string | null
@@ -449,9 +483,17 @@ export type Database = {
           degree?: string | null
           diploma_supplement_url?: string | null
           diploma_url?: string | null
+          external_university_city?: string | null
+          external_university_country?: string | null
+          external_university_id?: string | null
+          external_university_name?: string | null
+          external_university_website?: string | null
+          external_workspace_id?: string | null
           faculty?: string | null
           id?: string
           language?: string | null
+          passport_document_id?: string | null
+          passport_extraction?: Json | null
           passport_url?: string | null
           phone?: string | null
           photo_url?: string | null

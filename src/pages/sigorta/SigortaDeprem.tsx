@@ -1,12 +1,19 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button, Input, Label, Surface, TextField, Spinner } from '@heroui/react';
 import { TabSelector } from '@/components/shared/TabSelector';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
+import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { toast } from '@/hooks/use-toast';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
+import { motion } from 'framer-motion';
+import { Mountain } from 'lucide-react';
+
+const makeOptions = (keys: string[], tPrefix: string, t: (k: string) => string) =>
+  keys.map(k => ({ value: k, label: t(`${tPrefix}.${k}`) }));
 
 export default function SigortaDeprem() {
   const { t } = useTranslation();
@@ -31,35 +38,99 @@ export default function SigortaDeprem() {
     } catch { toast({ title: t('common.error'), variant: 'destructive' }); } finally { setLoading(false); }
   };
 
-  const selectField = (label: string, key: string, options: { value: string; label: string }[]) => (
-    <div className="space-y-2">
-      <label className="text-sm font-medium">{label}</label>
-      <Select value={form[key as keyof typeof form]} onValueChange={v => u(key, v)}>
-        <SelectTrigger><SelectValue placeholder={t('common.select')} /></SelectTrigger>
-        <SelectContent>{options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+  const HeroSel = ({ fieldKey, opts, label }: { fieldKey: string; opts: { value: string; label: string }[]; label: string }) => (
+    <div className="flex flex-col gap-1.5">
+      <Label>{label}</Label>
+      <Select value={form[fieldKey as keyof typeof form] || ''} onValueChange={k => u(fieldKey, k)}>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder={t('common.select')} />
+        </SelectTrigger>
+        <SelectContent>
+          {opts.map(o => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
       </Select>
     </div>
   );
 
   return (
-    <div className="space-y-6 animate-fade-in pb-20 lg:pb-6">
-      <h2 className="font-heading text-xl font-bold">{t('sigorta.deprem')}</h2>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <TabSelector tabs={[{ key: 'tc', label: t('form.tc') }, { key: 'vergi', label: t('form.vergi') }]} value={idType} onChange={setIdType} />
-        <div className="space-y-2"><label className="text-sm font-medium">{idType === 'tc' ? t('form.tcNo') : t('form.vergiNo')}</label><Input value={form.id_number} onChange={e => u('id_number', e.target.value)} required /></div>
-        <div className="space-y-2"><label className="text-sm font-medium">{t('sigorta.buildingArea')}</label><Input type="number" value={form.building_area} onChange={e => u('building_area', e.target.value)} required /></div>
-        {selectField(t('sigorta.buildingType'), 'building_type', [{ value: 't1', label: t('sigorta.buildingTypes.t1') }, { value: 't2', label: t('sigorta.buildingTypes.t2') }])}
-        {selectField(t('sigorta.usageType'), 'usage_type', [{ value: 'u1', label: t('sigorta.usageTypes.u1') }, { value: 'u2', label: t('sigorta.usageTypes.u2') }, { value: 'u3', label: t('sigorta.usageTypes.u3') }])}
-        {selectField(t('sigorta.floorCount'), 'floor_count', [{ value: 'f1', label: t('sigorta.floorCounts.f1') }, { value: 'f2', label: t('sigorta.floorCounts.f2') }, { value: 'f3', label: t('sigorta.floorCounts.f3') }, { value: 'f4', label: t('sigorta.floorCounts.f4') }])}
-        <div className="space-y-2"><label className="text-sm font-medium">{t('sigorta.apartmentNo')}</label><Input value={form.apartment_no} onChange={e => u('apartment_no', e.target.value)} /></div>
-        <div className="space-y-2"><label className="text-sm font-medium">{t('sigorta.mobilePhone')}</label><Input type="tel" value={form.mobile_phone} onChange={e => u('mobile_phone', e.target.value)} required /></div>
-        <div className="space-y-2"><label className="text-sm font-medium">{t('sigorta.addressCode')}</label><Input value={form.address_code} onChange={e => u('address_code', e.target.value)} /></div>
-        {selectField(t('sigorta.buildYear'), 'build_year', ['y1','y2','y3','y4','y5'].map(k => ({ value: k, label: t(`sigorta.buildYears.${k}`) })))}
-        {selectField(t('sigorta.insuredType'), 'insured_type', ['i1','i2','i3','i4'].map(k => ({ value: k, label: t(`sigorta.insuredTypes.${k}`) })))}
-        {selectField(t('sigorta.damageStatus'), 'damage_status', ['d1','d2','d3'].map(k => ({ value: k, label: t(`sigorta.damageStatuses.${k}`) })))}
-        {idType === 'tc' && <div className="space-y-2"><label className="text-sm font-medium">{t('form.birthDate')}</label><Input type="date" value={form.birth_date} onChange={e => u('birth_date', e.target.value)} /></div>}
-        <Button type="submit" className="w-full" size="lg" disabled={loading}>{loading ? t('common.loading') : t('common.submit')}</Button>
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-[#F2E8A0] flex items-center justify-center">
+          <Mountain className="h-7 w-7 text-[#8B7E2A]" />
+        </div>
+        <div>
+          <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-slate-900">{t('sigorta.deprem')}</h2>
+          <p className="text-slate-400 text-sm mt-0.5">Zilzila sug'urtasi</p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <Surface className="rounded-md p-6 md:p-8 space-y-6 bg-white/50">
+          {/* 1. Hujjat turi */}
+          <div className="space-y-2">
+            <Label>{t('sigorta.idType')}</Label>
+            <TabSelector tabs={[{ key: 'tc', label: t('form.tc') }, { key: 'vergi', label: t('form.vergi') }]} value={idType} onChange={setIdType} />
+          </div>
+
+          {/* 2. ID raqami & Telefon */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <TextField fullWidth isRequired name="id_number" variant="secondary" onChange={v => u('id_number', v)} value={form.id_number}>
+              <Label>{idType === 'tc' ? t('form.tcNo') : t('form.vergiNo')}</Label>
+              <Input placeholder="TC veya vergi numarası" />
+            </TextField>
+            <TextField fullWidth isRequired name="mobile_phone" type="tel" variant="secondary" onChange={v => u('mobile_phone', v)} value={form.mobile_phone}>
+              <Label>{t('sigorta.mobilePhone')}</Label>
+              <Input placeholder="+90 5XX XXX XX XX" />
+            </TextField>
+          </div>
+
+          {/* 3. Bino turi, foydalanish turi, qavat soni */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <HeroSel fieldKey="building_type" label={t('sigorta.buildingType')} opts={makeOptions(['t1','t2'], 'sigorta.buildingTypes', t)} />
+            <HeroSel fieldKey="usage_type" label={t('sigorta.usageType')} opts={makeOptions(['u1','u2','u3'], 'sigorta.usageTypes', t)} />
+            <HeroSel fieldKey="floor_count" label={t('sigorta.floorCount')} opts={makeOptions(['f1','f2','f3','f4'], 'sigorta.floorCounts', t)} />
+          </div>
+
+          {/* 4. Bino maydoni & Kvartira raqami */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <TextField fullWidth isRequired name="building_area" type="number" variant="secondary" onChange={v => u('building_area', v)} value={form.building_area}>
+              <Label>{t('sigorta.buildingArea')}</Label>
+              <Input placeholder="Bino maydoni (m²)" />
+            </TextField>
+            <TextField fullWidth name="apartment_no" variant="secondary" onChange={v => u('apartment_no', v)} value={form.apartment_no}>
+              <Label>{t('sigorta.apartmentNo')}</Label>
+              <Input placeholder="Daire numarası" />
+            </TextField>
+          </div>
+
+          {/* 5. Manzil kodi */}
+          <TextField fullWidth name="address_code" variant="secondary" onChange={v => u('address_code', v)} value={form.address_code}>
+            <Label>{t('sigorta.addressCode')}</Label>
+            <Input />
+          </TextField>
+
+          {/* 6. Qurilish yili, Sug'urta turi, Shikast holati */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <HeroSel fieldKey="build_year" label={t('sigorta.buildYear')} opts={makeOptions(['y1','y2','y3','y4','y5'], 'sigorta.buildYears', t)} />
+            <HeroSel fieldKey="insured_type" label={t('sigorta.insuredType')} opts={makeOptions(['i1','i2','i3','i4'], 'sigorta.insuredTypes', t)} />
+            <HeroSel fieldKey="damage_status" label={t('sigorta.damageStatus')} opts={makeOptions(['d1','d2','d3'], 'sigorta.damageStatuses', t)} />
+          </div>
+
+          {/* 7. Tug'ilgan sana (faqat TC) */}
+          {idType === 'tc' && (
+            <TextField fullWidth name="birth_date" type="date" variant="secondary" onChange={v => u('birth_date', v)} value={form.birth_date}>
+              <Label>{t('form.birthDate')}</Label>
+              <Input />
+            </TextField>
+          )}
+
+          <SubmitButton isPending={loading} />
+        </Surface>
       </form>
-    </div>
+    </motion.div>
   );
 }

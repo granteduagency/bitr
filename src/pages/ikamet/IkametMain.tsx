@@ -1,44 +1,106 @@
-import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { Shield, RefreshCw, ArrowRightLeft, Search, ChevronRight } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
+import {
+  Shield,
+  RefreshCw,
+  ArrowRightLeft,
+  Search,
+  ArrowUpRight,
+} from "lucide-react";
+import { motion } from "framer-motion";
+
+const CARD_STYLES = [
+  { bg: "#C8D5F5", color: "#4A6EC5", size: "col-span-2" }, // blue - wide
+  { bg: "#C8E6D0", color: "#3A8A56", size: "col-span-1" }, // mint
+  { bg: "#E0D4F0", color: "#7B5EA7", size: "col-span-1" }, // lavender
+  { bg: "#F2E8A0", color: "#8B7E2A", size: "col-span-2" }, // yellow - wide
+];
 
 export default function IkametMain() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
   const items = [
-    { icon: Shield, label: t('ikamet.ilkKez'), path: '/dashboard/ikamet/ilk-kez', color: '#3B82F6', desc: '' },
-    { icon: RefreshCw, label: t('ikamet.uzatma'), path: '/dashboard/ikamet/uzatma', color: '#10B981', desc: '' },
-    { icon: ArrowRightLeft, label: t('ikamet.gecis'), path: '/dashboard/ikamet/gecis', color: '#8B5CF6', desc: '' },
-    { icon: Search, label: t('ikamet.sonuc'), path: '/dashboard/ikamet/sonuc', color: '#F59E0B', desc: '' },
+    {
+      icon: Shield,
+      label: t("ikamet.ilkKez"),
+      desc: "Birinchi marta ariza berish",
+      path: "/dashboard/ikamet/ilk-kez",
+    },
+    {
+      icon: RefreshCw,
+      label: t("ikamet.uzatma"),
+      desc: "Muddatni uzaytirish",
+      path: "/dashboard/ikamet/uzatma",
+    },
+    {
+      icon: ArrowRightLeft,
+      label: t("ikamet.gecis"),
+      desc: "Tur o'zgartirish",
+      path: "/dashboard/ikamet/gecis",
+    },
+    {
+      icon: Search,
+      label: t("ikamet.sonuc"),
+      desc: "Holat tekshirish",
+      path: "/dashboard/ikamet/sonuc",
+    },
   ];
 
   return (
-    <div className="space-y-5 pb-24 lg:pb-6">
-      <motion.h2 initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="page-header">{t('ikamet.title')}</motion.h2>
-      <div className="grid gap-3">
-        {items.map((item, i) => (
-          <motion.div
-            key={item.path}
-            initial={{ opacity: 0, x: -16 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.08, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            className="service-card !p-0"
-            onClick={() => navigate(item.path)}
-          >
-            <div className="flex items-center gap-4 p-4">
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: `linear-gradient(135deg, ${item.color}20, ${item.color}30)`, color: item.color }}
-              >
-                <item.icon className="h-6 w-6" />
+    <div className="space-y-6">
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-slate-900">
+          {t("ikamet.title")}
+        </h2>
+        <p className="text-slate-400 text-sm mt-1">
+          Kerakli xizmat turini tanlang
+        </p>
+      </motion.div>
+
+      {/* Bento Grid Layout */}
+      <div className="grid grid-cols-2 gap-4 md:gap-5">
+        {items.map((item, i) => {
+          const style = CARD_STYLES[i];
+          return (
+            <motion.div
+              key={item.path}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                delay: i * 0.08,
+                duration: 0.45,
+                ease: [0.16, 1, 0.3, 1],
+              }}
+              className={`${style.size} rounded-[1.5rem] p-5 md:p-6 cursor-pointer group transition-all duration-300 hover:shadow-lg hover:-translate-y-1 min-h-[140px] md:min-h-[160px] flex flex-col justify-between`}
+              style={{ backgroundColor: style.bg }}
+              onClick={() => navigate(item.path)}
+            >
+              <div>
+                <item.icon
+                  className="h-7 w-7 mb-3"
+                  style={{ color: style.color }}
+                  strokeWidth={1.8}
+                />
+                <h3 className="font-heading font-bold text-base md:text-lg text-slate-800">
+                  {item.label}
+                </h3>
+                <p className="text-sm text-slate-600/80 mt-1">{item.desc}</p>
               </div>
-              <span className="font-heading font-bold flex-1">{item.label}</span>
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-            </div>
-          </motion.div>
-        ))}
+              <div className="flex justify-end mt-3">
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+                  style={{ backgroundColor: style.color, color: "#fff" }}
+                >
+                  <ArrowUpRight className="w-4 h-4" strokeWidth={2.5} />
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
     </div>
   );

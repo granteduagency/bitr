@@ -1,35 +1,133 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button, Input, Label, Surface, TextField, Spinner } from '@heroui/react';
 import { FileUpload } from '@/components/shared/FileUpload';
+import { PassportUploadField } from '@/components/shared/PassportUploadField';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
+import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import type { PassportUploadValue } from '@/lib/docupipe';
+import {
+  buildUniversityFilterOptions,
+  fetchUniversityCatalog,
+  filterUniversityCatalog,
+  getMatchingCatalogPrograms,
+  type UniversityCatalogFilters,
+  type UniversityCatalogUniversity,
+} from '@/lib/university-catalog';
 import { toast } from '@/hooks/use-toast';
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, ArrowUpRight, Globe2, MapPin } from 'lucide-react';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
+import { motion } from 'framer-motion';
+
+const UNI_COLORS = [
+  { bg: '#C8E6D0', color: '#3A8A56' }, { bg: '#C8D5F5', color: '#4A6EC5' },
+  { bg: '#F2E8A0', color: '#8B7E2A' }, { bg: '#E0D4F0', color: '#7B5EA7' },
+  { bg: '#FDD6B5', color: '#C67832' },
+];
+
+const EMPTY_FILTERS: UniversityCatalogFilters = {
+  degree: '',
+  faculty: '',
+  program: '',
+  language: '',
+};
 
 export default function UniversitePage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [step, setStep] = useState<'search' | 'results' | 'apply'>('search');
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [universities, setUniversities] = useState<any[]>([]);
-  const [selectedUni, setSelectedUni] = useState<any>(null);
-  const [search, setSearch] = useState({ degree: '', faculty: '', program: '', language: '' });
-  const [form, setForm] = useState({ passport_url: '', diploma_url: '', diploma_supplement_url: '', photo_url: '', phone: localStorage.getItem('client_phone') || '' });
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+  const [universities, setUniversities] = useState<UniversityCatalogUniversity[]>([]);
+  const [selectedUni, setSelectedUni] = useState<UniversityCatalogUniversity | null>(null);
+  const [passportMeta, setPassportMeta] = useState<PassportUploadValue | null>(null);
+  const [search, setSearch] = useState<UniversityCatalogFilters>(EMPTY_FILTERS);
+  const [form, setForm] = useState({
+    passport_url: '', diploma_url: '', diploma_supplement_url: '', photo_url: '',
+    phone: localStorage.getItem('client_phone') || '',
+  });
   const u = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
 
-  const fetchUnis = async () => {
-    const { data } = await supabase.from('universities').select('*').eq('is_active', true);
-    if (data) {
-      let filtered = data;
-      if (search.degree) filtered = filtered.filter(u => u.degrees?.includes(search.degree));
-      if (search.language) filtered = filtered.filter(u => u.languages?.includes(search.language));
-      setUniversities(filtered);
-      setStep('results');
-    }
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCatalog = async () => {
+      setCatalogLoading(true);
+      setCatalogError(null);
+
+      try {
+        const data = await fetchUniversityCatalog();
+        if (cancelled) {
+          return;
+        }
+
+        setUniversities(data.universities);
+        setWorkspaceName(data.workspaceName);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : t('universite.catalogError');
+        setCatalogError(message);
+        setUniversities([]);
+      } finally {
+        if (!cancelled) {
+          setCatalogLoading(false);
+        }
+      }
+    };
+
+    void loadCatalog();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
+
+  const filterOptions = useMemo(
+    () => buildUniversityFilterOptions(universities, search),
+    [search, universities],
+  );
+
+  useEffect(() => {
+    setSearch((current) => {
+      const next = { ...current };
+      let changed = false;
+
+      if (current.degree && !filterOptions.degrees.includes(current.degree)) {
+        next.degree = '';
+        changed = true;
+      }
+      if (current.faculty && !filterOptions.faculties.includes(current.faculty)) {
+        next.faculty = '';
+        changed = true;
+      }
+      if (current.program && !filterOptions.programs.includes(current.program)) {
+        next.program = '';
+        changed = true;
+      }
+      if (current.language && !filterOptions.languages.includes(current.language)) {
+        next.language = '';
+        changed = true;
+      }
+
+      return changed ? next : current;
+    });
+  }, [filterOptions]);
+
+  const filteredUniversities = useMemo(
+    () => filterUniversityCatalog(universities, search),
+    [search, universities],
+  );
+
+  const openResults = () => {
+    setStep('results');
   };
 
   if (submitted) return <SuccessScreen />;
@@ -39,60 +137,231 @@ export default function UniversitePage() {
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
       await supabase.from('university_applications').insert({
-        client_id: cId, university_id: selectedUni.id, degree: search.degree,
-        faculty: search.faculty, program: search.program, language: search.language, ...form,
+        client_id: cId,
+        university_id: null,
+        external_workspace_id: selectedUni?.workspaceId ?? null,
+        external_university_id: selectedUni?.id ?? null,
+        external_university_name: selectedUni?.name ?? null,
+        external_university_city: selectedUni?.city ?? null,
+        external_university_country: selectedUni?.country ?? null,
+        external_university_website: selectedUni?.website ?? null,
+        degree: search.degree || null,
+        faculty: search.faculty || null,
+        program: search.program || null,
+        language: search.language || null,
+        passport_document_id: passportMeta?.documentId ?? null,
+        passport_extraction: passportMeta?.extraction ?? null,
+        ...form,
       });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch { toast({ title: t('common.error'), variant: 'destructive' }); } finally { setLoading(false); }
   };
 
+  /* ── Apply step ── */
   if (step === 'apply' && selectedUni) return (
-    <div className="space-y-6 animate-fade-in pb-20 lg:pb-6">
-      <h2 className="font-heading text-xl font-bold">{i18n.language === 'uz' ? selectedUni.name_uz : selectedUni.name_tr}</h2>
-      <p className="text-muted-foreground">{t('universite.applyTitle')}</p>
-      <form onSubmit={handleApply} className="space-y-4">
-        <FileUpload label={t('universite.passportUpload')} onUpload={url => u('passport_url', url)} />
-        <FileUpload label={t('universite.diplomaUpload')} onUpload={url => u('diploma_url', url)} />
-        <FileUpload label={t('universite.diplomaSupplementUpload')} onUpload={url => u('diploma_supplement_url', url)} />
-        <FileUpload label={t('universite.photoUpload')} onUpload={url => u('photo_url', url)} accept="image/*" />
-        <div className="space-y-2"><label className="text-sm font-medium">{t('form.phone')}</label><Input value={form.phone} onChange={e => u('phone', e.target.value)} type="tel" required /></div>
-        <Button type="submit" className="w-full" size="lg" disabled={loading}>{loading ? t('common.loading') : t('common.submit')}</Button>
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <button onClick={() => setStep('results')} className="text-sm text-slate-500 hover:text-slate-900 font-medium transition-colors">← {t('common.back')}</button>
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-[#C8D5F5] flex items-center justify-center"><GraduationCap className="h-7 w-7 text-[#4A6EC5]" /></div>
+        <div>
+          <h2 className="font-heading text-xl font-extrabold text-slate-900">{selectedUni.name}</h2>
+          <p className="text-slate-400 text-sm">{t('universite.applyTitle')}</p>
+        </div>
+      </div>
+      <form onSubmit={handleApply}>
+        <Surface className="rounded-md p-6 md:p-8 space-y-6 bg-white/50">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <PassportUploadField
+              label={t('universite.passportUpload')}
+              onChange={(value) => {
+                setPassportMeta(value);
+                u('passport_url', value?.storageUrl || '');
+              }}
+            />
+            <FileUpload label={t('universite.diplomaUpload')} onUpload={url => u('diploma_url', url)} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FileUpload label={t('universite.diplomaSupplementUpload')} onUpload={url => u('diploma_supplement_url', url)} />
+            <FileUpload label={t('universite.photoUpload')} onUpload={url => u('photo_url', url)} accept="image/*" />
+          </div>
+          <TextField fullWidth isRequired name="phone" type="tel" variant="secondary" onChange={v => u('phone', v)} value={form.phone}>
+            <Label>{t('form.phone')}</Label>
+            <Input placeholder="+90 5XX XXX XX XX" />
+          </TextField>
+          <SubmitButton isPending={loading} />
+        </Surface>
       </form>
-    </div>
+    </motion.div>
   );
 
+  /* ── Results step ── */
   if (step === 'results') return (
-    <div className="space-y-4 animate-fade-in pb-20 lg:pb-6">
-      <div className="flex justify-between items-center">
-        <h2 className="font-heading text-xl font-bold">{t('universite.results')}</h2>
-        <Button variant="outline" size="sm" onClick={() => setStep('search')}>{t('common.back')}</Button>
+    <div className="space-y-6">
+      <div className="flex justify-between items-start gap-4">
+        <div>
+          <h2 className="font-heading text-2xl font-extrabold text-slate-900">{t('universite.results')}</h2>
+          {workspaceName ? (
+            <p className="text-slate-400 text-sm mt-1">
+              {t('universite.workspaceLabel')}: {workspaceName}
+            </p>
+          ) : null}
+        </div>
+        <button onClick={() => setStep('search')} className="text-sm text-slate-500 hover:text-slate-900 font-medium transition-colors">{t('common.back')}</button>
       </div>
-      {universities.length === 0 ? <p className="text-muted-foreground py-8 text-center">{t('common.noData')}</p> :
-        universities.map(uni => (
-          <Card key={uni.id} className="cursor-pointer hover:shadow-md transition-all" onClick={() => { setSelectedUni(uni); setStep('apply'); }}>
-            <CardContent className="flex items-center gap-4 p-4">
-              <div className="w-12 h-12 rounded-xl bg-success/10 flex items-center justify-center shrink-0"><GraduationCap className="h-6 w-6 text-success" /></div>
-              <div><p className="font-heading font-semibold">{i18n.language === 'uz' ? uni.name_uz : uni.name_tr}</p><p className="text-sm text-muted-foreground">{uni.city}</p></div>
-            </CardContent>
-          </Card>
-        ))}
+      {filteredUniversities.length === 0 ? (
+        <p className="text-slate-400 py-12 text-center">{t('common.noData')}</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredUniversities.map((uni, i) => {
+            const matchingPrograms = getMatchingCatalogPrograms(uni, search).slice(0, 3);
+
+            return (
+            <motion.div key={uni.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
+              className="rounded-[1.5rem] p-5 cursor-pointer group transition-all duration-300 hover:shadow-lg hover:-translate-y-1 min-h-[160px] flex flex-col justify-between"
+              style={{ backgroundColor: UNI_COLORS[i % UNI_COLORS.length].bg }}
+              onClick={() => { setSelectedUni(uni); setStep('apply'); }}
+            >
+              <div className="flex items-start gap-3">
+                {uni.logoUrl ? (
+                  <img
+                    src={uni.logoUrl}
+                    alt={uni.name}
+                    className="h-11 w-11 rounded-2xl object-cover shrink-0 bg-white/70"
+                  />
+                ) : (
+                  <div className="h-11 w-11 rounded-2xl bg-white/60 flex items-center justify-center shrink-0">
+                    <GraduationCap className="h-6 w-6" style={{ color: UNI_COLORS[i % UNI_COLORS.length].color }} />
+                  </div>
+                )}
+                <div>
+                  <p className="font-heading font-bold text-slate-800">{uni.name}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-slate-600/80">
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {uni.city}, {uni.country}
+                    </span>
+                    {uni.website ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Globe2 className="h-3.5 w-3.5" />
+                        {uni.website.replace(/^https?:\/\//, '')}
+                      </span>
+                    ) : null}
+                  </div>
+                  {matchingPrograms.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {matchingPrograms.map((program) => (
+                        <span
+                          key={program.id}
+                          className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium text-slate-700"
+                        >
+                          {program.name} · {program.degree} · {program.language}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <div className="w-8 h-8 rounded-full bg-white/60 flex items-center justify-center transition-transform group-hover:scale-110">
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-700" strokeWidth={2.5} />
+                </div>
+              </div>
+            </motion.div>
+          )})}
+        </div>
+      )}
     </div>
   );
 
+  /* ── Search step ── */
   return (
-    <div className="space-y-6 animate-fade-in pb-20 lg:pb-6">
-      <h2 className="font-heading text-xl font-bold">{t('universite.title')}</h2>
-      <div className="space-y-4">
-        <div className="space-y-2"><label className="text-sm font-medium">{t('universite.degree')}</label>
-          <Select value={search.degree} onValueChange={v => setSearch(p => ({ ...p, degree: v }))}><SelectTrigger><SelectValue placeholder={t('common.select')} /></SelectTrigger><SelectContent>
-            <SelectItem value="lisans">{t('universite.degrees.lisans')}</SelectItem><SelectItem value="yuksek_lisans">{t('universite.degrees.yuksek_lisans')}</SelectItem><SelectItem value="doktora">{t('universite.degrees.doktora')}</SelectItem>
-          </SelectContent></Select></div>
-        <div className="space-y-2"><label className="text-sm font-medium">{t('universite.language')}</label>
-          <Select value={search.language} onValueChange={v => setSearch(p => ({ ...p, language: v }))}><SelectTrigger><SelectValue placeholder={t('common.select')} /></SelectTrigger><SelectContent>
-            <SelectItem value="tr">Türkçe</SelectItem><SelectItem value="en">English</SelectItem>
-          </SelectContent></Select></div>
-        <Button onClick={fetchUnis} className="w-full" size="lg">{t('universite.searchBtn')}</Button>
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-[#C8D5F5] flex items-center justify-center"><GraduationCap className="h-7 w-7 text-[#4A6EC5]" /></div>
+        <div>
+          <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-slate-900">{t('universite.title')}</h2>
+          <p className="text-slate-400 text-sm mt-0.5">{t('universite.searchSubtitle')}</p>
+        </div>
       </div>
-    </div>
+      <Surface className="rounded-md p-6 md:p-8 space-y-6 bg-white/50">
+        {workspaceName ? (
+          <p className="text-sm text-slate-500">
+            {t('universite.workspaceLabel')}: <span className="font-semibold text-slate-700">{workspaceName}</span>
+          </p>
+        ) : null}
+
+        {catalogLoading ? (
+          <div className="py-10 flex flex-col items-center justify-center gap-3 text-slate-500">
+            <Spinner size="sm" />
+            <p>{t('universite.catalogLoading')}</p>
+          </div>
+        ) : catalogError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {catalogError}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>{t('universite.degree')}</Label>
+                <Select value={search.degree || ''} onValueChange={v => setSearch(p => ({ ...p, degree: v }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('common.select')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filterOptions.degrees.map((option) => (
+                      <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>{t('universite.faculty')}</Label>
+                <Select value={search.faculty || ''} onValueChange={v => setSearch(p => ({ ...p, faculty: v }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('common.select')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filterOptions.faculties.map((option) => (
+                      <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>{t('universite.program')}</Label>
+                <Select value={search.program || ''} onValueChange={v => setSearch(p => ({ ...p, program: v }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('common.select')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filterOptions.programs.map((option) => (
+                      <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>{t('universite.language')}</Label>
+                <Select value={search.language || ''} onValueChange={v => setSearch(p => ({ ...p, language: v }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t('common.select')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filterOptions.languages.map((option) => (
+                      <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex flex-col md:flex-row gap-3">
+              <Button onPress={openResults} fullWidth>{t('universite.searchBtn')}</Button>
+              <Button variant="flat" onPress={() => setSearch(EMPTY_FILTERS)} fullWidth>{t('universite.clearFilters')}</Button>
+            </div>
+          </>
+        )}
+      </Surface>
+    </motion.div>
   );
 }

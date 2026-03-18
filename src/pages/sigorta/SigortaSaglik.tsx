@@ -1,14 +1,24 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button, Input, Label, Surface, TextField, Spinner } from '@heroui/react';
 import { FileUpload } from '@/components/shared/FileUpload';
+import { PassportUploadField } from '@/components/shared/PassportUploadField';
 import { TabSelector } from '@/components/shared/TabSelector';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
+import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import {
+  passportSexToGender,
+  type PassportExtractionData,
+  type PassportUploadValue,
+} from '@/lib/docupipe';
 import { toast } from '@/hooks/use-toast';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from "@/components/ui/select";
+import { motion } from 'framer-motion';
+import { HeartPulse } from 'lucide-react';
 
 export default function SigortaSaglik() {
   const { t } = useTranslation();
@@ -16,11 +26,21 @@ export default function SigortaSaglik() {
   const citizenType = searchParams.get('type') || 'yabanci';
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [passportMeta, setPassportMeta] = useState<PassportUploadValue | null>(null);
   const [form, setForm] = useState({
     passport_url: '', father_name: '', mother_name: '', country: '',
     start_date: '', duration: '1', birth_date: '', gender: '',
   });
   const u = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }));
+  const applyPassportAutofill = (extraction: PassportExtractionData) => {
+    const gender = passportSexToGender(extraction.sex);
+    setForm((prev) => ({
+      ...prev,
+      birth_date: prev.birth_date || extraction.date_of_birth || '',
+      gender: prev.gender || gender,
+      country: prev.country || extraction.nationality || '',
+    }));
+  };
 
   if (submitted) return <SuccessScreen />;
 
@@ -28,31 +48,99 @@ export default function SigortaSaglik() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      await supabase.from('sigorta_applications').insert({ client_id: cId, type: 'saglik', data: { ...form, citizenType } });
+      await supabase.from('sigorta_applications').insert({
+        client_id: cId,
+        type: 'saglik',
+        data: {
+          ...form,
+          citizenType,
+          passport_document_id: passportMeta?.documentId ?? null,
+          passport_extraction: passportMeta?.extraction ?? null,
+        },
+      });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch { toast({ title: t('common.error'), variant: 'destructive' }); } finally { setLoading(false); }
   };
 
   return (
-    <div className="space-y-6 animate-fade-in pb-20 lg:pb-6">
-      <h2 className="font-heading text-xl font-bold">{t('sigorta.saglik')} — {citizenType === 'turk' ? t('form.turkish') : t('form.foreign')}</h2>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <FileUpload label={t('sigorta.passportTc') + ' (' + t('form.supporterIdFront') + ')'} onUpload={(url) => u('passport_url', url)} />
-        <div className="space-y-2"><label className="text-sm font-medium">{t('form.fatherName')}</label><Input value={form.father_name} onChange={e => u('father_name', e.target.value)} required /></div>
-        <div className="space-y-2"><label className="text-sm font-medium">{t('form.motherName')}</label><Input value={form.mother_name} onChange={e => u('mother_name', e.target.value)} required /></div>
-        <div className="space-y-2"><label className="text-sm font-medium">{t('form.country')}</label><Input value={form.country} onChange={e => u('country', e.target.value)} required /></div>
-        <div className="space-y-2"><label className="text-sm font-medium">{t('sigorta.startDate')}</label><Input type="date" value={form.start_date} onChange={e => u('start_date', e.target.value)} required /></div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">{t('sigorta.duration')}</label>
-          <TabSelector tabs={[{ key: '1', label: t('sigorta.year1') }, { key: '2', label: t('sigorta.year2') }, { key: '3', label: t('sigorta.year3') }]} value={form.duration} onChange={v => u('duration', v)} />
+    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 rounded-2xl bg-[#F5D5D5] flex items-center justify-center">
+          <HeartPulse className="h-7 w-7 text-[#B85555]" />
         </div>
-        <div className="space-y-2"><label className="text-sm font-medium">{t('form.birthDate')}</label><Input type="date" value={form.birth_date} onChange={e => u('birth_date', e.target.value)} required /></div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">{t('form.gender')}</label>
-          <Select value={form.gender} onValueChange={v => u('gender', v)}><SelectTrigger><SelectValue placeholder={t('common.select')} /></SelectTrigger><SelectContent><SelectItem value="male">{t('common.male')}</SelectItem><SelectItem value="female">{t('common.female')}</SelectItem></SelectContent></Select>
+        <div>
+          <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-slate-900">{t('sigorta.saglik')}</h2>
+          <p className="text-slate-400 text-sm mt-0.5">{citizenType === 'turk' ? t('form.turkish') : t('form.foreign')}</p>
         </div>
-        <Button type="submit" className="w-full" size="lg" disabled={loading}>{loading ? t('common.loading') : t('common.submit')}</Button>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <Surface className="rounded-md p-6 md:p-8 space-y-6">
+          {/* 1. Ota & Ona ismi */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <TextField fullWidth isRequired name="father_name" variant="secondary" onChange={v => u('father_name', v)} value={form.father_name}>
+              <Label>{t('form.fatherName')}</Label>
+              <Input placeholder="Otangizning ismi" />
+            </TextField>
+            <TextField fullWidth isRequired name="mother_name" variant="secondary" onChange={v => u('mother_name', v)} value={form.mother_name}>
+              <Label>{t('form.motherName')}</Label>
+              <Input placeholder="Onangizning ismi" />
+            </TextField>
+          </div>
+
+          {/* 2. Tug'ilgan sana & Jinsi */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <TextField fullWidth isRequired name="birth_date" type="date" variant="secondary" onChange={v => u('birth_date', v)} value={form.birth_date}>
+              <Label>{t('form.birthDate')}</Label>
+              <Input />
+            </TextField>
+            <div className="flex flex-col gap-1.5">
+              <Label>{t('form.gender')}</Label>
+              <Select value={form.gender || ''} onValueChange={v => u('gender', v)}>
+                <SelectTrigger className="w-fit">
+                  <SelectValue placeholder={t('common.select')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">{t('common.male')}</SelectItem>
+                  <SelectItem value="female">{t('common.female')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* 3. Mamlakat & Boshlanish sanasi */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <TextField fullWidth isRequired name="country" variant="secondary" onChange={v => u('country', v)} value={form.country}>
+              <Label>{t('form.country')}</Label>
+              <Input />
+            </TextField>
+            <TextField fullWidth isRequired name="start_date" type="date" variant="secondary" onChange={v => u('start_date', v)} value={form.start_date}>
+              <Label>{t('sigorta.startDate')}</Label>
+              <Input />
+            </TextField>
+          </div>
+
+          {/* 4. Muddat */}
+          <div className="space-y-2">
+            <Label>{t('sigorta.duration')}</Label>
+            <TabSelector tabs={[{ key: '1', label: t('sigorta.year1') }, { key: '2', label: t('sigorta.year2') }, { key: '3', label: t('sigorta.year3') }]} value={form.duration} onChange={v => u('duration', v)} />
+          </div>
+
+          {/* 5. Pasport (fayl) */}
+          <PassportUploadField
+            label={t('sigorta.passportTc')}
+            onChange={(value) => {
+              setPassportMeta(value);
+              u('passport_url', value?.storageUrl || '');
+              if (value?.extraction) {
+                applyPassportAutofill(value.extraction);
+              }
+            }}
+          />
+
+          <SubmitButton isPending={loading} />
+        </Surface>
       </form>
-    </div>
+    </motion.div>
   );
 }

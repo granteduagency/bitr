@@ -1,8 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "@heroui/styles";
 
 @layer base {
   :root {
@@ -96,11 +95,14 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: var(--border);
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     font-family: var(--font-body);
   }
 
@@ -145,9 +147,23 @@
 
 @layer components {
   .service-card {
-    @apply relative overflow-hidden rounded-2xl border border-border/40 bg-card p-5
-           transition-all duration-300 ease-out cursor-pointer
-           hover:shadow-lg hover:-translate-y-1 hover:border-primary/20;
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;
+    border-width: 1px;
+    border-color: hsl(var(--border) / 0.4);
+    background-color: var(--card);
+    padding: 1.25rem;
+    transition-property: all;
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0, 0, 0.2, 1);
+    cursor: pointer;
+  }
+
+  .service-card:hover {
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    transform: translateY(-0.25rem);
+    border-color: hsl(var(--primary) / 0.2);
   }
 
   .service-card::before {
@@ -167,26 +183,54 @@
   }
 
   .page-header {
-    @apply font-heading text-2xl font-extrabold tracking-tight;
+    font-family: var(--font-heading);
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
   }
 
   .form-section {
-    @apply space-y-5 rounded-2xl border border-border/40 bg-card p-6;
+    border-radius: 1rem;
+    border-width: 1px;
+    border-color: hsl(var(--border) / 0.4);
+    background-color: var(--card);
+    padding: 1.5rem;
     box-shadow: var(--shadow-sm);
+  }
+  
+  .form-section > * + * {
+    margin-top: 1.25rem;
   }
 
   .stat-card {
-    @apply relative overflow-hidden rounded-2xl border-0 p-5;
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;
+    border-width: 0px;
+    padding: 1.25rem;
     box-shadow: var(--shadow-md);
   }
 
   .bottom-nav-item {
-    @apply flex flex-col items-center gap-0.5 px-3 py-2 text-xs font-medium
-           transition-all duration-200 rounded-xl;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.125rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    transition-property: all;
+    transition-duration: 200ms;
+    border-radius: 0.75rem;
   }
 
   .bottom-nav-item.active {
-    @apply text-primary;
+    color: var(--primary);
     background-color: hsl(var(--primary) / 0.08);
   }
 }

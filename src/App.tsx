@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Dashboard from "./pages/Dashboard";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
+import { ProtectedRoute } from "./components/shared/ProtectedRoute";
 
 import IkametMain from "./pages/ikamet/IkametMain";
 import IkametTypeList from "./pages/ikamet/IkametTypeList";
@@ -44,46 +45,48 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/admin" element={<AdminPage />} />
           
-          <Route path="/dashboard" element={<DashboardLayout />}>
-            <Route index element={<Dashboard />} />
-            
-            {/* Ikamet */}
-            <Route path="ikamet" element={<IkametMain />} />
-            <Route path="ikamet/ilk-kez" element={<IkametTypeList basePath="/dashboard/ikamet/ilk-kez" showUzunDonem />} />
-            <Route path="ikamet/ilk-kez/ogrenci" element={<IkametForm category="ilk_kez" type="ogrenci" />} />
-            <Route path="ikamet/ilk-kez/aile" element={<IkametForm category="ilk_kez" type="aile" />} />
-            <Route path="ikamet/ilk-kez/kisa-donem" element={<IkametForm category="ilk_kez" type="kisa_donem" />} />
-            <Route path="ikamet/ilk-kez/uzun-donem" element={<IkametForm category="ilk_kez" type="uzun_donem" />} />
-            <Route path="ikamet/uzatma" element={<IkametTypeList basePath="/dashboard/ikamet/uzatma" showUzunDonem={false} />} />
-            <Route path="ikamet/uzatma/ogrenci" element={<IkametForm category="uzatma" type="ogrenci" />} />
-            <Route path="ikamet/uzatma/aile" element={<IkametForm category="uzatma" type="aile" />} />
-            <Route path="ikamet/uzatma/kisa-donem" element={<IkametForm category="uzatma" type="kisa_donem" />} />
-            <Route path="ikamet/gecis" element={<IkametTypeList basePath="/dashboard/ikamet/gecis" showUzunDonem />} />
-            <Route path="ikamet/gecis/ogrenci" element={<IkametForm category="gecis" type="ogrenci" />} />
-            <Route path="ikamet/gecis/aile" element={<IkametForm category="gecis" type="aile" />} />
-            <Route path="ikamet/gecis/kisa-donem" element={<IkametForm category="gecis" type="kisa_donem" />} />
-            <Route path="ikamet/gecis/uzun-donem" element={<IkametForm category="gecis" type="uzun_donem" />} />
-            <Route path="ikamet/sonuc" element={<IkametSonuc />} />
-            
-            {/* Calisma */}
-            <Route path="calisma/:type" element={<CalismaForm />} />
-            
-            {/* Sigorta */}
-            <Route path="sigorta" element={<SigortaMain />} />
-            <Route path="sigorta/saglik" element={<SigortaSaglik />} />
-            <Route path="sigorta/seyahat" element={<SigortaSeyahat />} />
-            <Route path="sigorta/deprem" element={<SigortaDeprem />} />
-            <Route path="sigorta/arac/:type" element={<SigortaArac />} />
-            <Route path="sigorta/turizm" element={<SigortaTurizm />} />
-            
-            {/* Other */}
-            <Route path="deport" element={<DeportPage />} />
-            <Route path="universite" element={<UniversitePage />} />
-            <Route path="viza" element={<VizaPage />} />
-            <Route path="konsolosluk" element={<KonsoloslukPage />} />
-            <Route path="tercume" element={<TercumePage />} />
-            <Route path="hukuk" element={<HukukPage />} />
-            <Route path="iletisim" element={<IletisimPage />} />
+          <Route element={<ProtectedRoute />}>
+            <Route path="/dashboard" element={<DashboardLayout />}>
+              <Route index element={<Dashboard />} />
+              
+              {/* Ikamet */}
+              <Route path="ikamet" element={<IkametMain />} />
+              <Route path="ikamet/ilk-kez" element={<IkametTypeList basePath="/dashboard/ikamet/ilk-kez" showUzunDonem />} />
+              <Route path="ikamet/ilk-kez/ogrenci" element={<IkametForm category="ilk_kez" type="ogrenci" />} />
+              <Route path="ikamet/ilk-kez/aile" element={<IkametForm category="ilk_kez" type="aile" />} />
+              <Route path="ikamet/ilk-kez/kisa-donem" element={<IkametForm category="ilk_kez" type="kisa_donem" />} />
+              <Route path="ikamet/ilk-kez/uzun-donem" element={<IkametForm category="ilk_kez" type="uzun_donem" />} />
+              <Route path="ikamet/uzatma" element={<IkametTypeList basePath="/dashboard/ikamet/uzatma" showUzunDonem={false} />} />
+              <Route path="ikamet/uzatma/ogrenci" element={<IkametForm category="uzatma" type="ogrenci" />} />
+              <Route path="ikamet/uzatma/aile" element={<IkametForm category="uzatma" type="aile" />} />
+              <Route path="ikamet/uzatma/kisa-donem" element={<IkametForm category="uzatma" type="kisa_donem" />} />
+              <Route path="ikamet/gecis" element={<IkametTypeList basePath="/dashboard/ikamet/gecis" showUzunDonem />} />
+              <Route path="ikamet/gecis/ogrenci" element={<IkametForm category="gecis" type="ogrenci" />} />
+              <Route path="ikamet/gecis/aile" element={<IkametForm category="gecis" type="aile" />} />
+              <Route path="ikamet/gecis/kisa-donem" element={<IkametForm category="gecis" type="kisa_donem" />} />
+              <Route path="ikamet/gecis/uzun-donem" element={<IkametForm category="gecis" type="uzun_donem" />} />
+              <Route path="ikamet/sonuc" element={<IkametSonuc />} />
+              
+              {/* Calisma */}
+              <Route path="calisma/:type" element={<CalismaForm />} />
+              
+              {/* Sigorta */}
+              <Route path="sigorta" element={<SigortaMain />} />
+              <Route path="sigorta/saglik" element={<SigortaSaglik />} />
+              <Route path="sigorta/seyahat" element={<SigortaSeyahat />} />
+              <Route path="sigorta/deprem" element={<SigortaDeprem />} />
+              <Route path="sigorta/arac/:type" element={<SigortaArac />} />
+              <Route path="sigorta/turizm" element={<SigortaTurizm />} />
+              
+              {/* Other */}
+              <Route path="deport" element={<DeportPage />} />
+              <Route path="universite" element={<UniversitePage />} />
+              <Route path="viza" element={<VizaPage />} />
+              <Route path="konsolosluk" element={<KonsoloslukPage />} />
+              <Route path="tercume" element={<TercumePage />} />
+              <Route path="hukuk" element={<HukukPage />} />
+              <Route path="iletisim" element={<IletisimPage />} />
+            </Route>
           </Route>
           
           <Route path="*" element={<NotFound />} />
