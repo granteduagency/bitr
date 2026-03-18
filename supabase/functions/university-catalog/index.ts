@@ -18,6 +18,12 @@ type CatalogRawFaculty = {
   name?: string;
 };
 
+type CatalogRawDegreeOption = {
+  id?: string;
+  name?: string;
+  order?: number;
+};
+
 type CatalogRawProgram = {
   id?: string;
   name?: string;
@@ -71,6 +77,12 @@ type CatalogUniversity = {
     description: string | null;
     requirements: string | null;
   }>;
+};
+
+type CatalogDegreeOption = {
+  id: string;
+  name: string;
+  order: number;
 };
 
 class HttpError extends Error {
@@ -252,15 +264,30 @@ async function fetchCatalogUniversities() {
   const attemptFetch = async (forceRefresh = false) => {
     const auth = await createCatalogSession(forceRefresh);
 
-    return fetchJson<{ universities?: CatalogRawUniversity[] }>(
-      `${baseUrl}/api/universities?includeInactive=true`,
-      {
-        headers: {
-          Accept: "application/json",
-          Cookie: auth.cookieHeader,
+    const headers = {
+      Accept: "application/json",
+      Cookie: auth.cookieHeader,
+    };
+
+    const [universitiesResponse, degreesResponse] = await Promise.all([
+      fetchJson<{ universities?: CatalogRawUniversity[] }>(
+        `${baseUrl}/api/universities?includeInactive=true`,
+        {
+          headers,
         },
-      },
-    );
+      ),
+      fetchJson<{ degrees?: CatalogRawDegreeOption[] }>(
+        `${baseUrl}/api/program-degrees`,
+        {
+          headers,
+        },
+      ),
+    ]);
+
+    return {
+      universitiesResponse,
+      degreesResponse,
+    };
   };
 
   try {
@@ -268,7 +295,8 @@ async function fetchCatalogUniversities() {
     return {
       workspaceId: authCache?.workspaceId ?? null,
       workspaceName: authCache?.workspaceName ?? null,
-      universities: result.data.universities ?? [],
+      universities: result.universitiesResponse.data.universities ?? [],
+      degrees: result.degreesResponse.data.degrees ?? [],
     };
   } catch (error) {
     if (error instanceof HttpError && error.status === 401) {
@@ -276,7 +304,8 @@ async function fetchCatalogUniversities() {
       return {
         workspaceId: authCache?.workspaceId ?? null,
         workspaceName: authCache?.workspaceName ?? null,
-        universities: result.data.universities ?? [],
+        universities: result.universitiesResponse.data.universities ?? [],
+        degrees: result.degreesResponse.data.degrees ?? [],
       };
     }
 
@@ -328,6 +357,34 @@ function transformCatalogUniversities(universities: CatalogRawUniversity[]): Cat
     .sort((left, right) => left.name.localeCompare(right.name, "uz"));
 }
 
+function transformCatalogDegreeOptions(
+  degrees: CatalogRawDegreeOption[],
+  universities: CatalogUniversity[],
+): CatalogDegreeOption[] {
+  const normalizedDegrees = degrees
+    .map((degree) => ({
+      id: normalizeString(degree.id),
+      name: normalizeString(degree.name),
+      order: typeof degree.order === "number" ? degree.order : Number.MAX_SAFE_INTEGER,
+    }))
+    .filter((degree) => degree.name);
+
+  const seen = new Set(normalizedDegrees.map((degree) => degree.name.toLocaleLowerCase("uz")));
+  const fallbackDegrees = uniqueSorted(
+    universities.flatMap((university) => university.programs.map((program) => program.degree)),
+  )
+    .filter((degree) => !seen.has(degree.toLocaleLowerCase("uz")))
+    .map((name, index) => ({
+      id: `fallback-${index + 1}`,
+      name,
+      order: Number.MAX_SAFE_INTEGER,
+    }));
+
+  return [...normalizedDegrees, ...fallbackDegrees].sort(
+    (left, right) => left.order - right.order || left.name.localeCompare(right.name, "uz"),
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -346,11 +403,14 @@ Deno.serve(async (req) => {
     }
 
     const catalog = await fetchCatalogUniversities();
+    const universities = transformCatalogUniversities(catalog.universities);
+    const degrees = transformCatalogDegreeOptions(catalog.degrees, universities);
 
     return jsonResponse({
       workspaceId: catalog.workspaceId,
       workspaceName: catalog.workspaceName,
-      universities: transformCatalogUniversities(catalog.universities),
+      degrees,
+      universities,
     });
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;

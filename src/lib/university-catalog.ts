@@ -38,6 +38,7 @@ export interface UniversityCatalogUniversity {
 export interface UniversityCatalogResponse {
   workspaceId: string | null;
   workspaceName: string | null;
+  degrees: string[];
   universities: UniversityCatalogUniversity[];
 }
 
@@ -56,6 +57,31 @@ const uniqueSorted = (values: Array<string | null | undefined>) =>
   Array.from(
     new Set(values.map((value) => normalizeValue(value)).filter(Boolean)),
   ).sort((left, right) => left.localeCompare(right, SORT_LOCALE));
+
+const mergeDegreeOptions = (
+  catalogDegrees: string[],
+  universities: UniversityCatalogUniversity[],
+) => {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+
+  for (const degree of catalogDegrees) {
+    const normalized = normalizeValue(degree);
+    const key = normalized.toLocaleLowerCase(SORT_LOCALE);
+    if (!normalized || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    ordered.push(normalized);
+  }
+
+  const extras = uniqueSorted(
+    universities.flatMap((university) => getActivePrograms(university).map((program) => program.degree)),
+  ).filter((degree) => !seen.has(degree.toLocaleLowerCase(SORT_LOCALE)));
+
+  return [...ordered, ...extras];
+};
 
 const matchesCatalogProgram = (
   program: UniversityCatalogProgram,
@@ -136,12 +162,21 @@ function collectOptionsForField(
 export function buildUniversityFilterOptions(
   universities: UniversityCatalogUniversity[],
   filters: UniversityCatalogFilters,
+  catalogDegrees: string[] = [],
 ): UniversityCatalogFilterOptions {
+  const degreeOptions = mergeDegreeOptions(catalogDegrees, universities);
+
   return {
-    degrees: collectOptionsForField(universities, filters, "degree"),
-    faculties: collectOptionsForField(universities, filters, "faculty"),
-    programs: collectOptionsForField(universities, filters, "program"),
-    languages: collectOptionsForField(universities, filters, "language"),
+    degrees: degreeOptions,
+    faculties: filters.degree ? collectOptionsForField(universities, filters, "faculty") : [],
+    programs:
+      filters.degree && filters.faculty
+        ? collectOptionsForField(universities, filters, "program")
+        : [],
+    languages:
+      filters.degree && filters.faculty && filters.program
+        ? collectOptionsForField(universities, filters, "language")
+        : [],
   };
 }
 
@@ -161,6 +196,11 @@ export async function fetchUniversityCatalog(): Promise<UniversityCatalogRespons
   return {
     workspaceId: typeof data?.workspaceId === "string" ? data.workspaceId : null,
     workspaceName: typeof data?.workspaceName === "string" ? data.workspaceName : null,
+    degrees: Array.isArray(data?.degrees)
+      ? data.degrees
+          .map((degree) => (typeof degree?.name === "string" ? degree.name : typeof degree === "string" ? degree : ""))
+          .filter(Boolean)
+      : [],
     universities,
   };
 }

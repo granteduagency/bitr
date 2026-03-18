@@ -43,10 +43,12 @@ export default function UniversitePage() {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+  const [degreeOptions, setDegreeOptions] = useState<string[]>([]);
   const [universities, setUniversities] = useState<UniversityCatalogUniversity[]>([]);
   const [selectedUni, setSelectedUni] = useState<UniversityCatalogUniversity | null>(null);
   const [passportMeta, setPassportMeta] = useState<PassportUploadValue | null>(null);
   const [search, setSearch] = useState<UniversityCatalogFilters>(EMPTY_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState<UniversityCatalogFilters>(EMPTY_FILTERS);
   const [form, setForm] = useState({
     passport_url: '', diploma_url: '', diploma_supplement_url: '', photo_url: '',
     phone: localStorage.getItem('client_phone') || '',
@@ -67,6 +69,7 @@ export default function UniversitePage() {
         }
 
         setUniversities(data.universities);
+        setDegreeOptions(data.degrees);
         setWorkspaceName(data.workspaceName);
       } catch (error) {
         if (cancelled) {
@@ -75,6 +78,7 @@ export default function UniversitePage() {
 
         const message = error instanceof Error ? error.message : t('universite.catalogError');
         setCatalogError(message);
+        setDegreeOptions([]);
         setUniversities([]);
       } finally {
         if (!cancelled) {
@@ -91,8 +95,8 @@ export default function UniversitePage() {
   }, [t]);
 
   const filterOptions = useMemo(
-    () => buildUniversityFilterOptions(universities, search),
-    [search, universities],
+    () => buildUniversityFilterOptions(universities, search, degreeOptions),
+    [degreeOptions, search, universities],
   );
 
   useEffect(() => {
@@ -122,13 +126,57 @@ export default function UniversitePage() {
   }, [filterOptions]);
 
   const filteredUniversities = useMemo(
-    () => filterUniversityCatalog(universities, search),
-    [search, universities],
+    () => filterUniversityCatalog(universities, appliedFilters),
+    [appliedFilters, universities],
   );
 
   const openResults = () => {
+    setAppliedFilters(search);
     setStep('results');
   };
+
+  const handleDegreeChange = (value: string) => {
+    setSearch({
+      degree: value,
+      faculty: '',
+      program: '',
+      language: '',
+    });
+  };
+
+  const handleFacultyChange = (value: string) => {
+    setSearch((current) => ({
+      ...current,
+      faculty: value,
+      program: '',
+      language: '',
+    }));
+  };
+
+  const handleProgramChange = (value: string) => {
+    setSearch((current) => ({
+      ...current,
+      program: value,
+      language: '',
+    }));
+  };
+
+  const handleLanguageChange = (value: string) => {
+    setSearch((current) => ({
+      ...current,
+      language: value,
+    }));
+  };
+
+  const clearSearch = () => {
+    setSearch(EMPTY_FILTERS);
+    setAppliedFilters(EMPTY_FILTERS);
+  };
+
+  const canSelectFaculty = Boolean(search.degree);
+  const canSelectProgram = Boolean(search.degree && search.faculty);
+  const canSelectLanguage = Boolean(search.degree && search.faculty && search.program);
+  const canSearch = Boolean(search.degree) && !catalogLoading && !catalogError;
 
   if (submitted) return <SuccessScreen />;
 
@@ -145,10 +193,10 @@ export default function UniversitePage() {
         external_university_city: selectedUni?.city ?? null,
         external_university_country: selectedUni?.country ?? null,
         external_university_website: selectedUni?.website ?? null,
-        degree: search.degree || null,
-        faculty: search.faculty || null,
-        program: search.program || null,
-        language: search.language || null,
+        degree: appliedFilters.degree || null,
+        faculty: appliedFilters.faculty || null,
+        program: appliedFilters.program || null,
+        language: appliedFilters.language || null,
         passport_document_id: passportMeta?.documentId ?? null,
         passport_extraction: passportMeta?.extraction ?? null,
         ...form,
@@ -213,7 +261,7 @@ export default function UniversitePage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredUniversities.map((uni, i) => {
-            const matchingPrograms = getMatchingCatalogPrograms(uni, search).slice(0, 3);
+            const matchingPrograms = getMatchingCatalogPrograms(uni, appliedFilters).slice(0, 3);
 
             return (
             <motion.div key={uni.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
@@ -304,7 +352,7 @@ export default function UniversitePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label>{t('universite.degree')}</Label>
-                <Select value={search.degree || ''} onValueChange={v => setSearch(p => ({ ...p, degree: v }))}>
+                <Select value={search.degree || ''} onValueChange={handleDegreeChange}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={t('common.select')} />
                   </SelectTrigger>
@@ -317,8 +365,8 @@ export default function UniversitePage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t('universite.faculty')}</Label>
-                <Select value={search.faculty || ''} onValueChange={v => setSearch(p => ({ ...p, faculty: v }))}>
-                  <SelectTrigger className="w-full">
+                <Select value={search.faculty || ''} onValueChange={handleFacultyChange}>
+                  <SelectTrigger className="w-full" disabled={!canSelectFaculty}>
                     <SelectValue placeholder={t('common.select')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -330,8 +378,8 @@ export default function UniversitePage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t('universite.program')}</Label>
-                <Select value={search.program || ''} onValueChange={v => setSearch(p => ({ ...p, program: v }))}>
-                  <SelectTrigger className="w-full">
+                <Select value={search.program || ''} onValueChange={handleProgramChange}>
+                  <SelectTrigger className="w-full" disabled={!canSelectProgram}>
                     <SelectValue placeholder={t('common.select')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -343,8 +391,8 @@ export default function UniversitePage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label>{t('universite.language')}</Label>
-                <Select value={search.language || ''} onValueChange={v => setSearch(p => ({ ...p, language: v }))}>
-                  <SelectTrigger className="w-full">
+                <Select value={search.language || ''} onValueChange={handleLanguageChange}>
+                  <SelectTrigger className="w-full" disabled={!canSelectLanguage}>
                     <SelectValue placeholder={t('common.select')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -356,8 +404,8 @@ export default function UniversitePage() {
               </div>
             </div>
             <div className="flex flex-col md:flex-row gap-3">
-              <Button onPress={openResults} fullWidth>{t('universite.searchBtn')}</Button>
-              <Button variant="flat" onPress={() => setSearch(EMPTY_FILTERS)} fullWidth>{t('universite.clearFilters')}</Button>
+              <Button onPress={openResults} isDisabled={!canSearch} fullWidth>{t('universite.searchBtn')}</Button>
+              <Button variant="flat" onPress={clearSearch} fullWidth>{t('universite.clearFilters')}</Button>
             </div>
           </>
         )}

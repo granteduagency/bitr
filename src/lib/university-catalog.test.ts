@@ -128,7 +128,26 @@ describe("university catalog filters", () => {
 
     expect(options.degrees).toEqual(["Bakalavr", "Magistr"]);
     expect(options.faculties).toEqual(["Business", "Engineering"]);
-    expect(options.programs).toEqual(["Business Administration", "Computer Science"]);
-    expect(options.languages).toEqual(["English", "Turkish"]);
+    expect(options.programs).toEqual([]);
+    expect(options.languages).toEqual([]);
+
+    const facultyOptions = buildUniversityFilterOptions(sampleUniversities, {
+      degree: "Bakalavr",
+      faculty: "Engineering",
+      program: "",
+      language: "",
+    });
+
+    expect(facultyOptions.programs).toEqual(["Computer Science"]);
+    expect(facultyOptions.languages).toEqual([]);
+
+    const programOptions = buildUniversityFilterOptions(sampleUniversities, {
+      degree: "Bakalavr",
+      faculty: "Engineering",
+      program: "Computer Science",
+      language: "",
+    });
+
+    expect(programOptions.languages).toEqual(["Turkish"]);
   });
 });
