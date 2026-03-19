@@ -242,7 +242,20 @@ export default function AdminPage() {
 
   const isJsonObject = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
-  const shouldHideStructuredKey = (key: string) => key.toLowerCase() === "mrz";
+  const shouldHideStructuredKey = (key: string, rootKey?: string) => {
+    if (key.toLowerCase() === "mrz") {
+      return true;
+    }
+
+    if (
+      (rootKey === "passport_extraction" || rootKey === "supporter_passport_extraction")
+      && ["surname", "full_name", "given_names", "issuing_country"].includes(key)
+    ) {
+      return true;
+    }
+
+    return false;
+  };
   const readText = (value: unknown) =>
     typeof value === "string" && value.trim() ? value.trim() : "";
   const getApplicationPayload = (item: AdminApplicationRecord | null | undefined) => {
@@ -542,8 +555,13 @@ export default function AdminPage() {
     }
   };
 
-  function renderStructuredValue(value: unknown, key: string, labelPrefix?: string): JSX.Element[] {
-    if (shouldHideStructuredKey(key)) {
+  function renderStructuredValue(
+    value: unknown,
+    key: string,
+    labelPrefix?: string,
+    rootKey = key,
+  ): JSX.Element[] {
+    if (shouldHideStructuredKey(key, rootKey)) {
       return [];
     }
 
@@ -593,7 +611,12 @@ export default function AdminPage() {
       }
 
       return items.flatMap((item, index) =>
-        renderStructuredValue(item, key, items.length > 1 ? `${label} ${index + 1}` : label),
+        renderStructuredValue(
+          item,
+          key,
+          items.length > 1 ? `${label} ${index + 1}` : label,
+          rootKey,
+        ),
       );
     }
 
@@ -603,6 +626,7 @@ export default function AdminPage() {
           childValue,
           childKey,
           labelPrefix ? `${labelPrefix} · ${getLabelForKey(childKey)}` : getLabelForKey(childKey),
+          rootKey,
         ),
       );
     }
@@ -1110,7 +1134,12 @@ export default function AdminPage() {
                     const label = getLabelForKey(field.key, field.labelKey);
 
                     if (field.isJson) {
-                      return renderStructuredValue(v, field.key, field.key === 'data' ? undefined : label);
+                      return renderStructuredValue(
+                        v,
+                        field.key,
+                        field.key === 'data' ? undefined : label,
+                        field.key,
+                      );
                     }
 
                     if (field.isFile || field.isDocuPipeOriginal) {
