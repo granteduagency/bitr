@@ -149,6 +149,9 @@ type AdminApplicationRecord = AdminApplicationMap[ServiceTab];
 type LeadTab = "clients" | "prospects";
 type LeadRecord = Tables<"client_leads">;
 type ActivityLogRecord = Tables<"client_activity_logs">;
+type DashboardActivityPreview = ActivityLogRecord & {
+  client_leads?: Pick<LeadRecord, "name" | "phone"> | null;
+};
 type TabItem = {
   key: AdminTab;
   label: string;
@@ -1670,7 +1673,7 @@ export default function AdminPage() {
   const unreadNotifications = notifications.filter((notification) => !notification.read).length;
 
   return (
-    <div className="min-h-screen bg-[#dcdad2] flex p-3">
+    <div className="min-h-screen bg-[#dcdad2] flex p-3 pl-0">
       {/* Sidebar */}
       <aside className="w-[88px] bg-[#dcdad2] flex flex-col items-center py-8 relative z-30 hidden lg:flex overflow-visible">
         <nav className="flex flex-col gap-3 overflow-visible">
