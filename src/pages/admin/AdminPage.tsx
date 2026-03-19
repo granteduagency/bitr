@@ -12,7 +12,19 @@ import {
   ensureAdminPushSubscription,
   removeAdminPushSubscription,
 } from "@/lib/admin-push";
-import type { Tables } from "@/integrations/supabase/types";
+import {
+  fetchAdminApplication,
+  fetchAdminDashboardData,
+  fetchAdminLeadActivities,
+  fetchAdminTabData,
+  updateAdminApplicationStatus,
+  type AdminActivityLogRecord,
+  type AdminApplicationRecord,
+  type AdminDashboardActivityPreview,
+  type AdminLeadRecord,
+  type AdminServiceCounts,
+  type AdminServiceTab,
+} from "@/lib/admin-dashboard";
 import { supabase, uploadFile } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -82,6 +94,7 @@ type DetailSectionConfig = {
   fields: string[];
 };
 
+type ServiceTab = AdminServiceTab;
 const tableMap = {
   ikamet: "ikamet_applications",
   sigorta: "sigorta_applications",
@@ -127,31 +140,12 @@ const SERVICE_DETAIL_SECTIONS: Record<ServiceTab, DetailSectionConfig[]> = {
   ],
 };
 
-type ServiceTab = keyof typeof tableMap;
 type AdminTab = "dashboard" | "clients" | "prospects" | "settings" | ServiceTab;
 type ApplicationTableName = (typeof tableMap)[ServiceTab];
-type ClientRecord = Tables<"clients">;
-type ClientSummary = Pick<ClientRecord, "name" | "phone">;
-type ClientRelation = {
-  clients?: ClientSummary | null;
-  client?: ClientSummary | null;
-};
-type AdminApplicationMap = {
-  ikamet: Tables<"ikamet_applications"> & ClientRelation;
-  sigorta: Tables<"sigorta_applications"> & ClientRelation;
-  visa: Tables<"visa_applications"> & ClientRelation;
-  tercume: Tables<"tercume_applications"> & ClientRelation;
-  hukuk: Tables<"hukuk_applications"> & ClientRelation;
-  calisma: Tables<"calisma_applications"> & ClientRelation;
-  universite: Tables<"university_applications"> & ClientRelation;
-};
-type AdminApplicationRecord = AdminApplicationMap[ServiceTab];
 type LeadTab = "clients" | "prospects";
-type LeadRecord = Tables<"client_leads">;
-type ActivityLogRecord = Tables<"client_activity_logs">;
-type DashboardActivityPreview = ActivityLogRecord & {
-  client_leads?: Pick<LeadRecord, "name" | "phone"> | null;
-};
+type LeadRecord = AdminLeadRecord;
+type ActivityLogRecord = AdminActivityLogRecord;
+type DashboardActivityPreview = AdminDashboardActivityPreview;
 type DashboardPanel = "stats" | "activity";
 type TabItem = {
   key: AdminTab;
@@ -193,21 +187,6 @@ const formatLeadActivityDate = (value: string) =>
     minute: "2-digit",
   });
 
-const fetchAdminApplicationById = async (serviceTab: ServiceTab, id: string) => {
-  const { data, error } = await supabase
-    .from(tableMap[serviceTab])
-    .select("*, clients(name, phone)")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Fetch application error:", error);
-    return null;
-  }
-
-  return data as AdminApplicationRecord | null;
-};
-
 export default function AdminPage() {
   const { t } = useTranslation();
   const [session, setSession] = useState<Session | null>(null);
@@ -218,6 +197,7 @@ export default function AdminPage() {
   const [tab, setTab] = useState<AdminTab>("dashboard");
   const [data, setData] = useState<AdminApplicationRecord[]>([]);
   const [serviceCache, setServiceCache] = useState<Partial<Record<ServiceTab, AdminApplicationRecord[]>>>({});
+  const [loadedServiceTabs, setLoadedServiceTabs] = useState<Partial<Record<ServiceTab, boolean>>>({});
   const [clients, setClients] = useState<LeadRecord[]>([]);
   const [prospects, setProspects] = useState<LeadRecord[]>([]);
   const [selectedLead, setSelectedLead] = useState<LeadRecord | null>(null);
@@ -249,6 +229,15 @@ export default function AdminPage() {
     allClients: 0,
     prospects: 0,
     applicants: 0,
+  });
+  const [serviceCounts, setServiceCounts] = useState<AdminServiceCounts>({
+    ikamet: 0,
+    sigorta: 0,
+    visa: 0,
+    tercume: 0,
+    hukuk: 0,
+    calisma: 0,
+    universite: 0,
   });
   const [dashboardPanel, setDashboardPanel] = useState<DashboardPanel>("stats");
   const [dashboardActivity, setDashboardActivity] = useState<DashboardActivityPreview[]>([]);
@@ -339,7 +328,15 @@ export default function AdminPage() {
     applicationId: string,
     notificationId?: string,
   ) => {
-    const application = await fetchAdminApplicationById(serviceTab, applicationId);
+    let application: AdminApplicationRecord | null = null;
+
+    try {
+      const response = await fetchAdminApplication(session, serviceTab, applicationId);
+      application = response.application;
+    } catch (error) {
+      console.error("Fetch application error:", error);
+    }
+
     if (!application) {
       toast({
         title: t("common.error"),
@@ -360,24 +357,15 @@ export default function AdminPage() {
     setTab(serviceTab);
     setSelectedApp(application);
     window.history.replaceState({}, document.title, "/admin");
-  }, [t]);
+  }, [session, t]);
 
   const openLeadDetails = useCallback(async (lead: LeadRecord) => {
     setSelectedLead(lead);
     setLeadActivitiesLoading(true);
 
     try {
-      const { data: logs, error } = await supabase
-        .from("client_activity_logs")
-        .select("*")
-        .eq("lead_id", lead.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      setLeadActivities(logs || []);
+      const response = await fetchAdminLeadActivities(session, lead.id);
+      setLeadActivities(response.rows || []);
     } catch (error) {
       console.error("Fetch lead activity error:", error);
       setLeadActivities([]);
@@ -389,7 +377,7 @@ export default function AdminPage() {
     } finally {
       setLeadActivitiesLoading(false);
     }
-  }, [t]);
+  }, [session, t]);
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -739,101 +727,31 @@ export default function AdminPage() {
     return getServiceLabel(value);
   };
 
-  const fetchData = async (serviceTab: ServiceTab) => {
-    const table = tableMap[serviceTab];
-    const { data: rows, error } = await supabase
-      .from(table)
-      .select("*, clients(name, phone)")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Fetch data error:", error);
-      return [];
-    }
-
-    return (rows || []) as AdminApplicationRecord[];
-  };
-
-  const fetchLeadList = async (leadTab: LeadTab) => {
-    let query = supabase
-      .from("client_leads")
-      .select("*")
-      .order("last_activity_at", { ascending: false });
-
-    if (leadTab === "prospects") {
-      query = query.eq("application_count", 0);
-    }
-
-    const { data: rows, error } = await query;
-
-    if (error) {
-      console.error("Fetch leads error:", error);
-      return [];
-    }
-
-    return rows || [];
-  };
-
-  const fetchDashboardActivity = async () => {
-    const { data: rows, error } = await supabase
-      .from("client_activity_logs")
-      .select("*, client_leads(name, phone)")
-      .order("created_at", { ascending: false })
-      .limit(6);
-
-    if (error) {
-      console.error("Fetch dashboard activity error:", error);
-      return [];
-    }
-
-    return (rows || []) as DashboardActivityPreview[];
-  };
-
-  const fetchStats = async () => {
-    const tables = Object.values(tableMap) as ApplicationTableName[];
-    let total = 0,
-      pending = 0,
-      completed = 0,
-      today = 0;
-    const todayStr = new Date().toISOString().split("T")[0];
-    for (const table of tables) {
-      const [{ count: c1 }, { count: c2 }, { count: c3 }, { count: c4 }] =
-        await Promise.all([
-          supabase.from(table).select("*", { count: "exact", head: true }),
-          supabase.from(table).select("*", { count: "exact", head: true }).eq("status", "pending"),
-          supabase.from(table).select("*", { count: "exact", head: true }).eq("status", "completed"),
-          supabase.from(table).select("*", { count: "exact", head: true }).gte("created_at", todayStr),
-        ]);
-      total += c1 || 0;
-      pending += c2 || 0;
-      completed += c3 || 0;
-      today += c4 || 0;
-    }
-
-    const [{ count: allClients }, { count: prospectsCount }, { count: applicantsCount }] =
-      await Promise.all([
-        supabase.from("client_leads").select("*", { count: "exact", head: true }),
-        supabase.from("client_leads").select("*", { count: "exact", head: true }).eq("application_count", 0),
-        supabase.from("client_leads").select("*", { count: "exact", head: true }).gt("application_count", 0),
-      ]);
-
-    return {
-      total,
-      pending,
-      completed,
-      today,
-      allClients: allClients || 0,
-      prospects: prospectsCount || 0,
-      applicants: applicantsCount || 0,
-    };
-  };
+  const applyDashboardPayload = useCallback((payload: Awaited<ReturnType<typeof fetchAdminDashboardData>>) => {
+    setStats(payload.stats);
+    setServiceCounts(payload.serviceCounts);
+    setClients(payload.clients);
+    setProspects(payload.prospects);
+    setDashboardActivity(payload.dashboardActivity);
+  }, []);
 
   useEffect(() => {
     if (!sessionUserId) {
       setServiceCache({});
+      setLoadedServiceTabs({});
       setData([]);
       setClients([]);
       setProspects([]);
+      setServiceCounts({
+        ikamet: 0,
+        sigorta: 0,
+        visa: 0,
+        tercume: 0,
+        hukuk: 0,
+        calisma: 0,
+        universite: 0,
+      });
+      setDashboardActivity([]);
       setSelectedLead(null);
       setLeadActivities([]);
       setAdminBootstrapped(false);
@@ -849,30 +767,18 @@ export default function AdminPage() {
       setDataLoading(false);
 
       try {
-        const [nextStats, nextClients, nextProspects, nextActivity, nextServiceEntries] = await Promise.all([
-          fetchStats(),
-          fetchLeadList("clients"),
-          fetchLeadList("prospects"),
-          fetchDashboardActivity(),
-          Promise.all(
-            applicationTableEntries.map(async ([serviceTab]) => [serviceTab, await fetchData(serviceTab)] as const),
-          ),
-        ]);
+        const payload = await fetchAdminDashboardData(session);
 
         if (!isActive) {
           return;
         }
 
-        const nextServiceCache = Object.fromEntries(nextServiceEntries) as Partial<
-          Record<ServiceTab, AdminApplicationRecord[]>
-        >;
-
-        setStats(nextStats);
-        setClients(nextClients);
-        setProspects(nextProspects);
-        setDashboardActivity(nextActivity);
-        setServiceCache(nextServiceCache);
+        applyDashboardPayload(payload);
+        setServiceCache({});
+        setLoadedServiceTabs({});
         setAdminBootstrapped(true);
+      } catch (error) {
+        console.error("Bootstrap admin data error:", error);
       } finally {
         if (isActive) {
           setDashboardLoading(false);
@@ -888,7 +794,7 @@ export default function AdminPage() {
     return () => {
       isActive = false;
     };
-  }, [sessionUserId]);
+  }, [applyDashboardPayload, session, sessionUserId]);
 
   useEffect(() => {
     if (!sessionUserId || !adminBootstrapped) {
@@ -909,48 +815,68 @@ export default function AdminPage() {
 
     const refreshCurrentTab = async () => {
       if (tab === "dashboard") {
-        const [nextStats, nextClients, nextProspects, nextActivity] = await Promise.all([
-          fetchStats(),
-          fetchLeadList("clients"),
-          fetchLeadList("prospects"),
-          fetchDashboardActivity(),
-        ]);
+        try {
+          const payload = await fetchAdminDashboardData(session);
+          if (!isActive) {
+            return;
+          }
 
-        if (!isActive) {
-          return;
+          applyDashboardPayload(payload);
+        } catch (error) {
+          console.error("Refresh dashboard error:", error);
         }
-
-        setStats(nextStats);
-        setClients(nextClients);
-        setProspects(nextProspects);
-        setDashboardActivity(nextActivity);
         return;
       }
 
       if (tab === "clients") {
-        const nextClients = await fetchLeadList("clients");
-        if (isActive) {
-          setClients(nextClients);
+        try {
+          const response = await fetchAdminTabData(session, "clients");
+          if (isActive) {
+            setClients(response.rows as LeadRecord[]);
+          }
+        } catch (error) {
+          console.error("Refresh clients error:", error);
         }
         return;
       }
 
       if (tab === "prospects") {
-        const nextProspects = await fetchLeadList("prospects");
-        if (isActive) {
-          setProspects(nextProspects);
+        try {
+          const response = await fetchAdminTabData(session, "prospects");
+          if (isActive) {
+            setProspects(response.rows as LeadRecord[]);
+          }
+        } catch (error) {
+          console.error("Refresh prospects error:", error);
         }
         return;
       }
 
       if (isServiceTab(tab)) {
-        const nextRows = await fetchData(tab);
-        if (!isActive) {
+        if (loadedServiceTabs[tab]) {
+          setData(serviceCache[tab] || []);
           return;
         }
 
-        setServiceCache((prev) => ({ ...prev, [tab]: nextRows }));
-        setData(nextRows);
+        setDataLoading(true);
+
+        try {
+          const response = await fetchAdminTabData(session, tab);
+          if (!isActive) {
+            return;
+          }
+
+          const nextRows = response.rows as AdminApplicationRecord[];
+          setServiceCache((prev) => ({ ...prev, [tab]: nextRows }));
+          setLoadedServiceTabs((prev) => ({ ...prev, [tab]: true }));
+          setData(nextRows);
+        } catch (error) {
+          console.error(`Refresh ${tab} error:`, error);
+        } finally {
+          if (isActive) {
+            setDataLoading(false);
+          }
+        }
       }
     };
 
@@ -959,7 +885,7 @@ export default function AdminPage() {
     return () => {
       isActive = false;
     };
-  }, [adminBootstrapped, sessionUserId, tab]);
+  }, [adminBootstrapped, applyDashboardPayload, loadedServiceTabs, serviceCache, session, sessionUserId, tab]);
 
   useEffect(() => {
     if (!sessionUserId || typeof window === "undefined") return;
@@ -994,7 +920,15 @@ export default function AdminPage() {
               return;
             }
 
-            const application = await fetchAdminApplicationById(serviceTab, applicationId);
+            let application: AdminApplicationRecord | null = null;
+
+            try {
+              const response = await fetchAdminApplication(session, serviceTab, applicationId);
+              application = response.application;
+            } catch (error) {
+              console.error("Fetch realtime application error:", error);
+            }
+
             if (!application || !isActive) {
               return;
             }
@@ -1024,10 +958,14 @@ export default function AdminPage() {
               setData((prev) => [application, ...prev.filter((item) => item.id !== application.id)]);
             }
             setStats((prev) => ({
+              ...prev,
               total: prev.total + 1,
               pending: prev.pending + 1,
-              completed: prev.completed,
               today: prev.today + 1,
+            }));
+            setServiceCounts((prev) => ({
+              ...prev,
+              [serviceTab]: prev[serviceTab] + 1,
             }));
           },
         )
@@ -1040,19 +978,17 @@ export default function AdminPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "client_leads" },
         async () => {
-          const [nextStats, nextClients, nextProspects] = await Promise.all([
-            fetchStats(),
-            fetchLeadList("clients"),
-            fetchLeadList("prospects"),
-          ]);
+          try {
+            const payload = await fetchAdminDashboardData(session);
 
-          if (!isActive) {
-            return;
+            if (!isActive) {
+              return;
+            }
+
+            applyDashboardPayload(payload);
+          } catch (error) {
+            console.error("Refresh lead dashboard payload error:", error);
           }
-
-          setStats(nextStats);
-          setClients(nextClients);
-          setProspects(nextProspects);
         },
       )
       .subscribe();
@@ -1063,13 +999,17 @@ export default function AdminPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "client_activity_logs" },
         async () => {
-          const nextActivity = await fetchDashboardActivity();
+          try {
+            const payload = await fetchAdminDashboardData(session);
 
-          if (!isActive) {
-            return;
+            if (!isActive) {
+              return;
+            }
+
+            applyDashboardPayload(payload);
+          } catch (error) {
+            console.error("Refresh activity dashboard payload error:", error);
           }
-
-          setDashboardActivity(nextActivity);
         },
       )
       .subscribe();
@@ -1082,21 +1022,32 @@ export default function AdminPage() {
       void supabase.removeChannel(leadChannel);
       void supabase.removeChannel(activityChannel);
     };
-  }, [sessionUserId, t, tab]);
+  }, [applyDashboardPayload, session, sessionUserId, t, tab]);
 
   const updateStatus = async (id: string, status: string) => {
     if (!isServiceTab(tab)) return;
 
-    await supabase
-      .from(tableMap[tab])
-      .update({ status })
-      .eq("id", id);
-    setServiceCache((prev) => ({
-      ...prev,
-      [tab]: (prev[tab] || []).map((item) => (item.id === id ? { ...item, status } : item)),
-    }));
-    setData((prev) => prev.map((item) => (item.id === id ? { ...item, status } : item)));
-    toast({ title: t("common.success") });
+    try {
+      const response = await updateAdminApplicationStatus(session, tab, id, status);
+      const updatedApplication = response.application;
+
+      if (updatedApplication) {
+        setServiceCache((prev) => ({
+          ...prev,
+          [tab]: (prev[tab] || []).map((item) => (item.id === id ? updatedApplication : item)),
+        }));
+        setData((prev) => prev.map((item) => (item.id === id ? updatedApplication : item)));
+        setSelectedApp((prev) => (prev?.id === id ? updatedApplication : prev));
+      }
+
+      toast({ title: t("common.success") });
+    } catch (error) {
+      toast({
+        title: t("common.error"),
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
   };
 
   const humanizeKey = (key: string) =>
@@ -1701,10 +1652,10 @@ export default function AdminPage() {
     { label: t("admin.completedApplications"), value: stats.completed.toString(), bg: "bg-[#dbeef0]", badge: t("admin.done"), badgeColors: "bg-[#fae29f] text-slate-800", icon: CheckCircle },
     { label: t("admin.todayApplications"), value: stats.today.toString(), bg: "bg-[#fae7cb]", badge: t("admin.24h"), badgeColors: "bg-[#e3d1a8] text-slate-800", icon: FileText },
     { label: t("admin.convertedClients"), value: stats.applicants.toString(), bg: "bg-[#e8ebed]", badge: "", badgeColors: "", icon: Users },
-    { label: t("services.ikamet"), value: String(serviceCache.ikamet?.length || 0), bg: "bg-[#cadded]", badge: "", badgeColors: "", icon: FileText },
-    { label: t("services.viza"), value: String(serviceCache.visa?.length || 0), bg: "bg-[#ecdcc5]", badge: "", badgeColors: "", icon: Clock },
-    { label: t("services.sigorta"), value: String(serviceCache.sigorta?.length || 0), bg: "bg-[#d5ced5]", badge: "", badgeColors: "", icon: CheckCircle },
-    { label: t("services.calisma"), value: String(serviceCache.calisma?.length || 0), bg: "bg-[#ebd1d8]", badge: "", badgeColors: "", icon: Clock },
+    { label: t("services.ikamet"), value: String(serviceCounts.ikamet || 0), bg: "bg-[#cadded]", badge: "", badgeColors: "", icon: FileText },
+    { label: t("services.viza"), value: String(serviceCounts.visa || 0), bg: "bg-[#ecdcc5]", badge: "", badgeColors: "", icon: Clock },
+    { label: t("services.sigorta"), value: String(serviceCounts.sigorta || 0), bg: "bg-[#d5ced5]", badge: "", badgeColors: "", icon: CheckCircle },
+    { label: t("services.calisma"), value: String(serviceCounts.calisma || 0), bg: "bg-[#ebd1d8]", badge: "", badgeColors: "", icon: Clock },
     { label: t("admin.allClients"), value: stats.allClients.toString(), bg: "bg-[#f4f3f0]", badge: "", badgeColors: "", icon: Search },
   ];
   const isLeadTab = tab === "clients" || tab === "prospects";
