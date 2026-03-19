@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Form, Input, Button } from "@heroui/react";
@@ -11,6 +11,15 @@ const Index = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    const name = localStorage.getItem("client_name")?.trim();
+    const phone = localStorage.getItem("client_phone")?.trim();
+
+    if (name && phone) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [navigate]);
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

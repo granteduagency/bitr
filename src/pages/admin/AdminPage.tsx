@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   getDocuPipeOriginalUrl,
@@ -749,7 +749,7 @@ export default function AdminPage() {
   const renderDetailCard = (
     rowKey: string,
     label: string,
-    content: JSX.Element,
+    content: React.JSX.Element,
     fullWidth = false,
   ) => (
     <div
@@ -816,7 +816,7 @@ export default function AdminPage() {
     key: string,
     labelPrefix?: string,
     rootKey = key,
-  ): JSX.Element[] {
+  ): React.JSX.Element[] {
     if (shouldHideStructuredKey(key, rootKey)) {
       return [];
     }
@@ -983,7 +983,7 @@ export default function AdminPage() {
   function renderServiceField(
     item: AdminApplicationRecord,
     field: ServiceField,
-  ): JSX.Element[] {
+  ): React.JSX.Element[] {
     const value = item[field.key as keyof AdminApplicationRecord];
     if (value === null || value === undefined || value === "") {
       return [];
@@ -1164,8 +1164,8 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-[#dcdad2] flex p-3">
       {/* Sidebar */}
-      <aside className="w-[88px] bg-[#dcdad2] flex flex-col items-center py-8 relative z-10 hidden lg:flex overflow-hidden">
-        <nav className="flex flex-col gap-3">
+      <aside className="w-[88px] bg-[#dcdad2] flex flex-col items-center py-8 relative z-30 hidden lg:flex overflow-visible">
+        <nav className="flex flex-col gap-3 overflow-visible">
           {tabs.map((tb) => {
             const Icon = tb.icon || FileText;
             const isActive = tab === tb.key;
@@ -1174,12 +1174,12 @@ export default function AdminPage() {
                 key={tb.key}
                 onClick={() => setTab(tb.key)}
                 className={cn(
-                  "w-11 h-11 flex items-center justify-center rounded-full transition-all group relative",
+                  "w-11 h-11 flex items-center justify-center rounded-full transition-all group relative z-10",
                   isActive ? "bg-black text-white" : "text-slate-600 hover:bg-black/10"
                 )}
               >
                 <Icon className="w-5 h-5" />
-                <span className="absolute left-14 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[120] shadow-lg transition-opacity">
                   {tb.label}
                 </span>
               </button>
@@ -1396,7 +1396,7 @@ export default function AdminPage() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl">
               <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
                 <form onSubmit={saveSettings} className="p-8 space-y-8">
-                  <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-8 items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-[185px_minmax(0,1fr)] gap-8 items-start">
                     <div className="space-y-4">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                         {t("admin.profilePhoto")}
