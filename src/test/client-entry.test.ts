@@ -13,6 +13,9 @@ describe("client entry helpers", () => {
     expect(normalizeClientName("  Aziz   Rahimov  ")).toBe("Aziz Rahimov");
     expect(validateClientName("Aziz Rahimov")).toBeNull();
     expect(validateClientName("asdf asdf")).toBe("landing.nameErrorFake");
+    expect(validateClientName("adasdasdas dasdasdas")).toBe("landing.nameErrorFake");
+    expect(validateClientName("qweqwe qweqwe")).toBe("landing.nameErrorFake");
+    expect(validateClientName("Sabitkhon Akramjon Ugli Kodirov")).toBeNull();
     expect(validateClientName("A Z")).toBe("landing.nameErrorShort");
   });
 

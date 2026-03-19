@@ -7,6 +7,8 @@ import {
   type Country,
   type Value,
 } from "react-phone-number-input/input";
+import isAlpha from "validator/es/lib/isAlpha";
+import { parseFullName } from "parse-full-name";
 
 const blockedNameValues = new Set([
   "test",
@@ -28,6 +30,10 @@ const blockedNameValues = new Set([
 ]);
 
 const allowedNamePattern = /^[\p{L}\p{M}'-]+(?: [\p{L}\p{M}'-]+)+$/u;
+const allowedNameTokenPattern = /^[\p{L}\p{M}'-]+$/u;
+const suspiciousNameSeedPattern =
+  /(asdf|asdasd|adasd|dasdas|qwerty|qweqwe|zxczxc|abcabc|test|demo|admin|user|name|surname|soyad|isim)/iu;
+const repeatedChunkPattern = /^(.{2,4})\1{1,}$/u;
 const phoneCountries = getCountries();
 
 export type ClientPhoneCountry = Country;
@@ -72,6 +78,94 @@ export const sanitizeClientNameInput = (value: string) =>
 
 export const normalizeClientName = (value: string) =>
   sanitizeClientNameInput(value).trim().replace(/\s+/g, " ");
+
+const countVowels = (value: string) => {
+  const matches = value.match(/[aeiouyаеёиоуыэюяıöüâêîôûáéíóúàèìòù]/giu);
+  return matches?.length || 0;
+};
+
+const getUniqueNgramRatio = (value: string, size: number) => {
+  if (value.length <= size) {
+    return 1;
+  }
+
+  const total = value.length - size + 1;
+  const grams = new Set<string>();
+
+  for (let index = 0; index < total; index += 1) {
+    grams.add(value.slice(index, index + size));
+  }
+
+  return grams.size / total;
+};
+
+const normalizeNameToken = (value: string) =>
+  value
+    .toLocaleLowerCase("tr-TR")
+    .replace(/['-]/g, "");
+
+const isValidatorAlphaToken = (value: string) => {
+  if (allowedNameTokenPattern.test(value)) {
+    return true;
+  }
+
+  return (
+    isAlpha(value, "tr-TR", { ignore: "'-" }) ||
+    isAlpha(value, "en-US", { ignore: "'-" }) ||
+    isAlpha(value, "ru-RU", { ignore: "'-" })
+  );
+};
+
+const isSuspiciousNameToken = (value: string) => {
+  const normalized = normalizeNameToken(value);
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (suspiciousNameSeedPattern.test(normalized) || repeatedChunkPattern.test(normalized)) {
+    return true;
+  }
+
+  if (/(\p{L})\1{3,}/u.test(normalized)) {
+    return true;
+  }
+
+  if (normalized.length >= 6) {
+    const uniqueChars = new Set(normalized).size;
+    const trigramRatio = getUniqueNgramRatio(normalized, 3);
+    const bigramRatio = getUniqueNgramRatio(normalized, 2);
+    const vowelCount = countVowels(normalized);
+
+    if (uniqueChars <= 3) {
+      return true;
+    }
+
+    if (uniqueChars <= 4 && trigramRatio < 0.65) {
+      return true;
+    }
+
+    if (bigramRatio < 0.55) {
+      return true;
+    }
+
+    if (vowelCount === 0 || vowelCount / normalized.length < 0.15) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const hasStructuredFullName = (value: string) => {
+  const parsed = parseFullName(value, "all", 0, 0, 0);
+
+  if (parsed.error.length > 0) {
+    return false;
+  }
+
+  return Boolean(parsed.first.trim() && parsed.last.trim());
+};
 
 export const getDefaultClientPhoneCountry = (value?: string | null): ClientPhoneCountry => {
   const parsed = parseClientPhoneValue(value);
@@ -138,7 +232,7 @@ export const validateClientName = (value: string) => {
   }
 
   const parts = normalized.split(" ");
-  if (parts.some((part) => part.replace(/['-]/g, "").length < 2)) {
+  if (parts.some((part) => part.replace(/['-]/g, "").length < 2 || !isValidatorAlphaToken(part))) {
     return "landing.nameErrorInvalid";
   }
 
@@ -147,7 +241,15 @@ export const validateClientName = (value: string) => {
     return "landing.nameErrorFake";
   }
 
-  if (/(.)\1{3,}/iu.test(lettersOnly) || /(asdf|qwer|zxcv|test|demo|admin)/iu.test(lowered)) {
+  if (
+    /(.)\1{3,}/iu.test(lettersOnly) ||
+    suspiciousNameSeedPattern.test(lowered) ||
+    parts.some((part) => isSuspiciousNameToken(part))
+  ) {
+    return "landing.nameErrorFake";
+  }
+
+  if (!hasStructuredFullName(normalized)) {
     return "landing.nameErrorFake";
   }
 
