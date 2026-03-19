@@ -152,6 +152,7 @@ type ActivityLogRecord = Tables<"client_activity_logs">;
 type DashboardActivityPreview = ActivityLogRecord & {
   client_leads?: Pick<LeadRecord, "name" | "phone"> | null;
 };
+type DashboardPanel = "stats" | "activity";
 type TabItem = {
   key: AdminTab;
   label: string;
@@ -249,6 +250,8 @@ export default function AdminPage() {
     prospects: 0,
     applicants: 0,
   });
+  const [dashboardPanel, setDashboardPanel] = useState<DashboardPanel>("stats");
+  const [dashboardActivity, setDashboardActivity] = useState<DashboardActivityPreview[]>([]);
   const sessionUserId = session?.user.id ?? null;
 
   useEffect(() => {
@@ -771,6 +774,21 @@ export default function AdminPage() {
     return rows || [];
   };
 
+  const fetchDashboardActivity = async () => {
+    const { data: rows, error } = await supabase
+      .from("client_activity_logs")
+      .select("*, client_leads(name, phone)")
+      .order("created_at", { ascending: false })
+      .limit(6);
+
+    if (error) {
+      console.error("Fetch dashboard activity error:", error);
+      return [];
+    }
+
+    return (rows || []) as DashboardActivityPreview[];
+  };
+
   const fetchStats = async () => {
     const tables = Object.values(tableMap) as ApplicationTableName[];
     let total = 0,
@@ -831,10 +849,11 @@ export default function AdminPage() {
       setDataLoading(false);
 
       try {
-        const [nextStats, nextClients, nextProspects, nextServiceEntries] = await Promise.all([
+        const [nextStats, nextClients, nextProspects, nextActivity, nextServiceEntries] = await Promise.all([
           fetchStats(),
           fetchLeadList("clients"),
           fetchLeadList("prospects"),
+          fetchDashboardActivity(),
           Promise.all(
             applicationTableEntries.map(async ([serviceTab]) => [serviceTab, await fetchData(serviceTab)] as const),
           ),
@@ -851,6 +870,7 @@ export default function AdminPage() {
         setStats(nextStats);
         setClients(nextClients);
         setProspects(nextProspects);
+        setDashboardActivity(nextActivity);
         setServiceCache(nextServiceCache);
         setAdminBootstrapped(true);
       } finally {
@@ -889,10 +909,11 @@ export default function AdminPage() {
 
     const refreshCurrentTab = async () => {
       if (tab === "dashboard") {
-        const [nextStats, nextClients, nextProspects] = await Promise.all([
+        const [nextStats, nextClients, nextProspects, nextActivity] = await Promise.all([
           fetchStats(),
           fetchLeadList("clients"),
           fetchLeadList("prospects"),
+          fetchDashboardActivity(),
         ]);
 
         if (!isActive) {
@@ -902,6 +923,7 @@ export default function AdminPage() {
         setStats(nextStats);
         setClients(nextClients);
         setProspects(nextProspects);
+        setDashboardActivity(nextActivity);
         return;
       }
 
@@ -1035,12 +1057,30 @@ export default function AdminPage() {
       )
       .subscribe();
 
+    const activityChannel = supabase
+      .channel("admin-client-activity")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "client_activity_logs" },
+        async () => {
+          const nextActivity = await fetchDashboardActivity();
+
+          if (!isActive) {
+            return;
+          }
+
+          setDashboardActivity(nextActivity);
+        },
+      )
+      .subscribe();
+
     return () => {
       isActive = false;
       applicationChannels.forEach((channel) => {
         void supabase.removeChannel(channel);
       });
       void supabase.removeChannel(leadChannel);
+      void supabase.removeChannel(activityChannel);
     };
   }, [sessionUserId, t, tab]);
 
@@ -1673,9 +1713,9 @@ export default function AdminPage() {
   const unreadNotifications = notifications.filter((notification) => !notification.read).length;
 
   return (
-    <div className="min-h-screen bg-[#dcdad2] flex p-3 pl-0">
+    <div className="h-screen overflow-hidden bg-[#dcdad2] flex p-3 pl-0">
       {/* Sidebar */}
-      <aside className="w-[88px] bg-[#dcdad2] flex flex-col items-center py-8 relative z-30 hidden lg:flex overflow-visible">
+      <aside className="w-[88px] h-full shrink-0 bg-[#dcdad2] flex flex-col items-center py-8 relative z-30 hidden lg:flex overflow-visible">
         <nav className="flex flex-col gap-3 overflow-visible">
           {tabs.map((tb) => {
             const Icon = tb.icon || FileText;
@@ -1700,7 +1740,7 @@ export default function AdminPage() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 bg-[#f9f8f6] rounded-[2rem] flex flex-col min-w-0 overflow-hidden shadow-sm border border-black/5">
+      <div className="flex-1 min-h-0 bg-[#f9f8f6] rounded-[2rem] flex flex-col min-w-0 overflow-hidden shadow-sm border border-black/5">
         {/* Header */}
         <header className="h-20 px-8 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 text-slate-400 bg-white px-4 py-2.5 rounded-full shadow-sm w-72 border border-slate-100">
@@ -1876,8 +1916,28 @@ export default function AdminPage() {
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-1 space-y-4">
                   <div className="flex items-center gap-6 px-2">
-                    <button className="font-extrabold text-slate-900 border-b-2 border-slate-900 pb-1 text-[17px]">{t("admin.stats")}</button>
-                    <button className="font-bold text-slate-400 hover:text-slate-600 pb-1 text-[17px] flex items-center gap-2 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => setDashboardPanel("stats")}
+                      className={cn(
+                        "pb-1 text-[17px] transition-colors border-b-2",
+                        dashboardPanel === "stats"
+                          ? "font-extrabold text-slate-900 border-slate-900"
+                          : "font-bold text-slate-400 border-transparent hover:text-slate-600",
+                      )}
+                    >
+                      {t("admin.stats")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDashboardPanel("activity")}
+                      className={cn(
+                        "pb-1 text-[17px] flex items-center gap-2 transition-colors border-b-2",
+                        dashboardPanel === "activity"
+                          ? "font-extrabold text-slate-900 border-slate-900"
+                          : "font-bold text-slate-400 border-transparent hover:text-slate-600",
+                      )}
+                    >
                       <Grip className="w-4 h-4" /> {t("admin.activity")}
                     </button>
                   </div>
@@ -1891,6 +1951,45 @@ export default function AdminPage() {
                           </div>
                         ))}
                       </div>
+                    ) : dashboardPanel === "activity" ? (
+                      dashboardActivity.length === 0 ? (
+                        <div className="flex h-full items-center justify-center text-sm font-medium text-slate-400">
+                          {t("common.noData")}
+                        </div>
+                      ) : (
+                        <div className="flex h-full flex-col gap-3 overflow-y-auto pr-1">
+                          {dashboardActivity.map((activity) => (
+                            <div
+                              key={activity.id}
+                              className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-bold text-white">
+                                    {activity.client_leads?.name || activity.client_leads?.phone || "—"}
+                                  </p>
+                                  <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                    {getLeadActionLabel(activity.action)}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 text-[11px] font-medium text-slate-500">
+                                  {formatLeadActivityDate(activity.created_at)}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-sm text-slate-300 break-words">
+                                {getActivityDescription(activity)}
+                              </p>
+                              {(activity.service_key || activity.route) && (
+                                <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                  {activity.service_key && isServiceTabKey(activity.service_key)
+                                    ? getServiceLabel(activity.service_key)
+                                    : activity.route}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )
                     ) : (
                       <div className="grid grid-cols-2 gap-y-8 gap-x-6">
                         <div className="flex flex-col gap-1">
