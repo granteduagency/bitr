@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Form, Input, Button } from "@heroui/react";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import { InstallAppButton } from "@/components/shared/InstallAppButton";
+import {
+  formatClientPhoneInput,
+  normalizeClientName,
+  toStoredClientPhone,
+  validateClientName,
+  validateClientPhone,
+  sanitizeClientNameInput,
+} from "@/lib/client-entry";
 import { Plane, Car, Luggage, Cloud } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -11,29 +19,46 @@ const Index = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+  });
+  const [touched, setTouched] = useState({
+    name: false,
+    phone: false,
+  });
+
+  const normalizedName = useMemo(() => normalizeClientName(form.name), [form.name]);
+  const storedPhone = useMemo(() => toStoredClientPhone(form.phone), [form.phone]);
+  const nameError = useMemo(() => validateClientName(form.name), [form.name]);
+  const phoneError = useMemo(() => validateClientPhone(form.phone), [form.phone]);
+  const canSubmit = !nameError && !phoneError;
 
   useEffect(() => {
     const name = localStorage.getItem("client_name")?.trim();
     const phone = localStorage.getItem("client_phone")?.trim();
 
-    if (name && phone) {
-      navigate("/dashboard", { replace: true });
+    if (!name && !phone) {
+      return;
     }
+
+    if (!validateClientName(name || "") && !validateClientPhone(phone || "")) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+
+    localStorage.removeItem("client_name");
+    localStorage.removeItem("client_phone");
   }, [navigate]);
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const data: Record<string, string> = {};
+    setTouched({ name: true, phone: true });
 
-    formData.forEach((value, key) => {
-      data[key] = value.toString();
-    });
+    if (!canSubmit) return;
 
-    if (!data.name?.trim() || !data.phone?.trim()) return;
-
-    localStorage.setItem("client_name", data.name.trim());
-    localStorage.setItem("client_phone", data.phone.trim());
+    localStorage.setItem("client_name", normalizedName);
+    localStorage.setItem("client_phone", storedPhone);
     navigate("/dashboard");
   };
 
@@ -564,26 +589,55 @@ const Index = () => {
 
                 <Form
                   className="flex flex-col gap-4 w-full"
-                  validationBehavior="native"
                   onSubmit={onSubmit}
                 >
                   <Input
                     required
                     name="name"
+                    value={form.name}
+                    onValueChange={(value) =>
+                      setForm((prev) => ({ ...prev, name: sanitizeClientNameInput(value) }))
+                    }
+                    onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
                     placeholder={t("landing.namePlaceholder")}
-                    className="w-full h-14 bg-white/50 hover:bg-white focus-within:bg-white border-2 border-black focus-within:border-black rounded-[0.85rem] shadow-none [&_input]:text-[15px] [&_input]:font-medium [&_input]:placeholder:text-slate-500"
+                    autoComplete="name"
+                    maxLength={60}
+                    className={`w-full h-14 bg-white/50 hover:bg-white focus-within:bg-white border-2 rounded-[0.85rem] shadow-none [&_input]:text-[15px] [&_input]:font-medium [&_input]:placeholder:text-slate-500 ${touched.name && nameError ? "border-red-500 focus-within:border-red-500" : "border-black focus-within:border-black"}`}
                   />
+                  <div className="mt-[-6px] min-h-[20px] px-1">
+                    {touched.name && nameError ? (
+                      <p className="text-sm font-medium text-red-500">{t(nameError)}</p>
+                    ) : (
+                      <p className="text-xs font-medium text-slate-400">{t("landing.nameHelper")}</p>
+                    )}
+                  </div>
 
                   <Input
                     required
                     name="phone"
                     type="tel"
+                    value={form.phone}
+                    onValueChange={(value) =>
+                      setForm((prev) => ({ ...prev, phone: formatClientPhoneInput(value) }))
+                    }
+                    onBlur={() => setTouched((prev) => ({ ...prev, phone: true }))}
                     placeholder={t("landing.phonePlaceholder")}
-                    className="w-full h-14 bg-white/50 hover:bg-white focus-within:bg-white border-2 border-black focus-within:border-black rounded-[0.85rem] shadow-none [&_input]:text-[15px] [&_input]:font-medium [&_input]:placeholder:text-slate-500"
+                    autoComplete="tel"
+                    inputMode="numeric"
+                    maxLength={17}
+                    className={`w-full h-14 bg-white/50 hover:bg-white focus-within:bg-white border-2 rounded-[0.85rem] shadow-none [&_input]:text-[15px] [&_input]:font-medium [&_input]:placeholder:text-slate-500 ${touched.phone && phoneError ? "border-red-500 focus-within:border-red-500" : "border-black focus-within:border-black"}`}
                   />
+                  <div className="mt-[-6px] min-h-[20px] px-1">
+                    {touched.phone && phoneError ? (
+                      <p className="text-sm font-medium text-red-500">{t(phoneError)}</p>
+                    ) : (
+                      <p className="text-xs font-medium text-slate-400">{t("landing.phoneHelper")}</p>
+                    )}
+                  </div>
 
                   <Button
                     type="submit"
+                    isDisabled={!canSubmit}
                     className="w-full mt-2 h-14 bg-black text-white hover:bg-black/90 rounded-[2rem] text-base font-bold shadow-lg"
                   >
                     {t("landing.loginBtn")}
