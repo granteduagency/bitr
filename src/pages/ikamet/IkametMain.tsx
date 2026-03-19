@@ -24,25 +24,25 @@ export default function IkametMain() {
     {
       icon: Shield,
       label: t("ikamet.ilkKez"),
-      desc: "Birinchi marta ariza berish",
+      desc: t("ikamet.ilkKezDescription"),
       path: "/dashboard/ikamet/ilk-kez",
     },
     {
       icon: RefreshCw,
       label: t("ikamet.uzatma"),
-      desc: "Muddatni uzaytirish",
+      desc: t("ikamet.uzatmaDescription"),
       path: "/dashboard/ikamet/uzatma",
     },
     {
       icon: ArrowRightLeft,
       label: t("ikamet.gecis"),
-      desc: "Tur o'zgartirish",
+      desc: t("ikamet.gecisDescription"),
       path: "/dashboard/ikamet/gecis",
     },
     {
       icon: Search,
       label: t("ikamet.sonuc"),
-      desc: "Holat tekshirish",
+      desc: t("ikamet.sonucCardDescription"),
       path: "/dashboard/ikamet/sonuc",
     },
   ];
@@ -57,7 +57,7 @@ export default function IkametMain() {
           {t("ikamet.title")}
         </h2>
         <p className="text-slate-400 text-sm mt-1">
-          Kerakli xizmat turini tanlang
+          {t("ikamet.mainDescription")}
         </p>
       </motion.div>
 
