@@ -83,6 +83,7 @@ export const uz = {
     checkFailed: "Randevu holatini tekshirib bo'lmadi.",
     checkByPhone: "Telefon orqali tekshirish",
     checkByEmail: "Email orqali tekshirish",
+    checking: "Tekshirilmoqda...",
     uploadHint: "PDF yoki rasm yuklashingiz mumkin. Ajratilgan ma'lumotlarni yuborishdan oldin tahrirlash mumkin.",
     checkInfo: "Tekshiruv qanday ishlaydi?",
     checkInfoDesc: "Tizim registration number va document number orqali e-ikamet holatini tekshiradi. Telefon yoki email maydonidan bittasi to'g'ri bo'lishi kerak.",

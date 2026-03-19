@@ -5,9 +5,10 @@ interface SubmitButtonProps {
   isPending?: boolean;
   isDisabled?: boolean;
   className?: string;
+  pendingText?: string;
 }
 
-export function SubmitButton({ isPending, isDisabled, className }: SubmitButtonProps) {
+export function SubmitButton({ isPending, isDisabled, className, pendingText }: SubmitButtonProps) {
   const { t } = useTranslation();
 
   return (
@@ -28,7 +29,7 @@ export function SubmitButton({ isPending, isDisabled, className }: SubmitButtonP
       {({ isPending }) => (
         <>
           {isPending && <Spinner color="current" size="sm" />}
-          {isPending ? t('common.loading') : t('common.submit')}
+          {isPending ? pendingText || t('common.loading') : t('common.submit')}
         </>
       )}
     </Button>

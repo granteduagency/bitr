@@ -430,6 +430,7 @@ export default function IkametSonuc() {
           <SubmitButton
             isPending={loading}
             isDisabled={!canSubmit || parsing}
+            pendingText={t("ikamet.checking")}
             className="h-12 rounded-2xl bg-slate-900 text-white font-bold shadow-lg"
           />
         </Surface>

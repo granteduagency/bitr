@@ -83,6 +83,7 @@ export const tr = {
     checkFailed: "Randevu durumu kontrol edilemedi.",
     checkByPhone: "Telefon ile kontrol",
     checkByEmail: "E-posta ile kontrol",
+    checking: "Kontrol ediliyor...",
     uploadHint: "PDF veya görsel yükleyebilirsiniz. Ayıklanan bilgiler gönderimden önce düzenlenebilir.",
     checkInfo: "Kontrol nasıl çalışır?",
     checkInfoDesc: "Sistem registration number ve document number ile e-ikamet durumunu kontrol eder. Telefon veya e-posta alanlarından biri doğru olmalıdır.",
