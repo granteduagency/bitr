@@ -1716,7 +1716,7 @@ export default function AdminPage() {
     <div className="h-screen overflow-hidden bg-[#dcdad2] flex p-3 pl-0">
       {/* Sidebar */}
       <aside className="w-[88px] h-full shrink-0 bg-[#dcdad2] flex flex-col items-center py-8 relative z-30 hidden lg:flex overflow-visible">
-        <nav className="flex flex-col overflow-visible">
+        <nav className="flex flex-col gap-1.5 overflow-visible">
           {tabs.map((tb) => {
             const Icon = tb.icon || FileText;
             const isActive = tab === tb.key;
