@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Form, Input, Button } from "@heroui/react";
 import { ClientPhoneField } from "@/components/shared/ClientPhoneField";
@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from "framer-motion";
 const Index = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -42,6 +43,14 @@ const Index = () => {
     [form.phone, phoneCountry],
   );
   const canSubmit = !nameError && !phoneError;
+  const redirectTarget =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "from" in location.state &&
+    typeof (location.state as { from?: unknown }).from === "string" &&
+    (location.state as { from: string }).from.startsWith("/dashboard")
+      ? (location.state as { from: string }).from
+      : "/dashboard";
 
   useEffect(() => {
     const identity = getStoredClientIdentity();
@@ -52,12 +61,12 @@ const Index = () => {
         phone: identity.phone,
       });
       setPhoneCountry(identity.country);
-      navigate("/dashboard", { replace: true });
+      navigate(redirectTarget, { replace: true });
       return;
     }
 
     clearStoredClientIdentity();
-  }, [navigate]);
+  }, [navigate, redirectTarget]);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -76,7 +85,7 @@ const Index = () => {
     }).catch((error) => {
       console.error("Lead sync error:", error);
     });
-    navigate("/dashboard");
+    navigate(redirectTarget, { replace: true });
   };
 
   return (
