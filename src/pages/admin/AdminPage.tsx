@@ -171,6 +171,9 @@ export default function AdminPage() {
   const [settingsForm, setSettingsForm] = useState({
     fullName: "",
     avatarUrl: "",
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -194,7 +197,13 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!session) {
-      setSettingsForm({ fullName: "", avatarUrl: "" });
+      setSettingsForm({
+        fullName: "",
+        avatarUrl: "",
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
       return;
     }
 
@@ -207,6 +216,9 @@ export default function AdminPage() {
         typeof session.user.user_metadata?.avatar_url === "string"
           ? session.user.user_metadata.avatar_url
           : "",
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
     });
   }, [session]);
 
@@ -259,11 +271,44 @@ export default function AdminPage() {
 
     try {
       setSettingsSaving(true);
+      const isChangingPassword =
+        Boolean(settingsForm.currentPassword) ||
+        Boolean(settingsForm.newPassword) ||
+        Boolean(settingsForm.confirmPassword);
+
+      if (isChangingPassword) {
+        if (
+          !settingsForm.currentPassword ||
+          !settingsForm.newPassword ||
+          !settingsForm.confirmPassword
+        ) {
+          throw new Error(t("admin.passwordFieldsRequired"));
+        }
+
+        if (settingsForm.newPassword !== settingsForm.confirmPassword) {
+          throw new Error(t("admin.passwordMismatch"));
+        }
+
+        if (!session?.user?.email) {
+          throw new Error(t("common.error"));
+        }
+
+        const { error: reauthError } = await supabase.auth.signInWithPassword({
+          email: session.user.email,
+          password: settingsForm.currentPassword,
+        });
+
+        if (reauthError) {
+          throw new Error(t("admin.currentPasswordInvalid"));
+        }
+      }
+
       const { error } = await supabase.auth.updateUser({
         data: {
           full_name: settingsForm.fullName.trim(),
           avatar_url: settingsForm.avatarUrl.trim(),
         },
+        ...(isChangingPassword ? { password: settingsForm.newPassword } : {}),
       });
 
       if (error) {
@@ -274,6 +319,12 @@ export default function AdminPage() {
         data: { session: refreshedSession },
       } = await supabase.auth.getSession();
       setSession(refreshedSession);
+      setSettingsForm((prev) => ({
+        ...prev,
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      }));
       toast({ title: t("common.success") });
     } catch (error) {
       toast({
@@ -1173,14 +1224,20 @@ export default function AdminPage() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="rounded-2xl bg-white p-2 border-slate-100 shadow-xl min-w-[180px]">
-                  <DropdownMenuItem className="rounded-xl font-medium" onSelect={() => setTab("settings")}>
+                  <DropdownMenuItem
+                    className="rounded-xl font-medium transition-colors hover:bg-slate-50 hover:text-slate-900 focus:bg-slate-50 focus:text-slate-900"
+                    onSelect={() => setTab("settings")}
+                  >
                     <Settings className="w-4 h-4 mr-2" />
                     {t("admin.settings")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="rounded-xl font-medium text-red-500 focus:text-red-500" onSelect={logout}>
+                  <DropdownMenuItem
+                    className="rounded-xl font-medium text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 focus:bg-red-50 focus:text-red-600"
+                    onSelect={logout}
+                  >
                     <LogOut className="w-4 h-4 mr-2" />
-                    {t("auth.logout")}
+                    {t("admin.logout")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1338,10 +1395,6 @@ export default function AdminPage() {
           {tab === "settings" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl">
               <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
-                <div className="px-8 pt-8 pb-5 border-b border-slate-100">
-                  <h3 className="text-xl font-bold text-slate-900 font-heading">{t("admin.settings")}</h3>
-                  <p className="text-slate-400 text-sm mt-1">{session?.user?.email || ""}</p>
-                </div>
                 <form onSubmit={saveSettings} className="p-8 space-y-8">
                   <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-8 items-start">
                     <div className="space-y-4">
@@ -1361,33 +1414,72 @@ export default function AdminPage() {
                     </div>
 
                     <div className="space-y-5">
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                          {t("form.fullName")}
-                        </label>
-                        <Input
-                          value={settingsForm.fullName}
-                          onChange={(event) => setSettingsForm((prev) => ({ ...prev, fullName: event.target.value }))}
-                          className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
-                          placeholder={t("form.fullName")}
-                        />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div className="space-y-2">
+                          <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                            {t("form.fullName")}
+                          </label>
+                          <Input
+                            value={settingsForm.fullName}
+                            onChange={(event) => setSettingsForm((prev) => ({ ...prev, fullName: event.target.value }))}
+                            className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                            placeholder={t("form.fullName")}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                            {t("form.email")}
+                          </label>
+                          <Input value={session?.user?.email || ""} disabled className="h-12 rounded-2xl border-slate-200 bg-slate-100 text-slate-500" />
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                          {t("auth.email")}
-                        </label>
-                        <Input value={session?.user?.email || ""} disabled className="h-12 rounded-2xl border-slate-200 bg-slate-100 text-slate-500" />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                          {t("admin.profileImageUrl")}
-                        </label>
-                        <Input
-                          value={settingsForm.avatarUrl}
-                          onChange={(event) => setSettingsForm((prev) => ({ ...prev, avatarUrl: event.target.value }))}
-                          className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
-                          placeholder="https://..."
-                        />
+                      <div className="space-y-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                            {t("admin.passwordSecurity")}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {t("admin.passwordSecurityDescription")}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {t("admin.currentPassword")}
+                            </label>
+                            <Input
+                              type="password"
+                              value={settingsForm.currentPassword}
+                              onChange={(event) => setSettingsForm((prev) => ({ ...prev, currentPassword: event.target.value }))}
+                              className="h-12 rounded-2xl border-slate-200 bg-white text-slate-900"
+                              placeholder={t("admin.currentPassword")}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {t("admin.newPassword")}
+                            </label>
+                            <Input
+                              type="password"
+                              value={settingsForm.newPassword}
+                              onChange={(event) => setSettingsForm((prev) => ({ ...prev, newPassword: event.target.value }))}
+                              className="h-12 rounded-2xl border-slate-200 bg-white text-slate-900"
+                              placeholder={t("admin.newPassword")}
+                            />
+                          </div>
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {t("admin.confirmPassword")}
+                            </label>
+                            <Input
+                              type="password"
+                              value={settingsForm.confirmPassword}
+                              onChange={(event) => setSettingsForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
+                              className="h-12 rounded-2xl border-slate-200 bg-white text-slate-900"
+                              placeholder={t("admin.confirmPassword")}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
