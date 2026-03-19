@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { getDocuPipeOriginalUrl } from "@/lib/docupipe";
+import {
+  getDocuPipeOriginalUrl,
+  getPassportFatherName,
+  getPassportGivenName,
+  getPassportSurname,
+  toPassportExtractionData,
+  type PassportExtractionData,
+} from "@/lib/docupipe";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
@@ -237,6 +244,37 @@ export default function AdminPage() {
     item?.clients?.name || item?.client?.name || "—";
   const getClientPhone = (item: AdminApplicationRecord | null | undefined) =>
     item?.clients?.phone || item?.client?.phone || "—";
+  const isJsonObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+  const shouldHideStructuredKey = (key: string) => key.toLowerCase() === "mrz";
+  const getPrimaryPassportExtraction = (
+    item: AdminApplicationRecord | null | undefined,
+  ): PassportExtractionData | null => {
+    if (!item) return null;
+
+    const record = item as unknown as Record<string, unknown>;
+    const directExtraction = toPassportExtractionData(record.passport_extraction);
+    if (directExtraction) {
+      return directExtraction;
+    }
+
+    const dataPayload = isJsonObject(record.data) ? record.data : null;
+    if (!dataPayload) {
+      return null;
+    }
+
+    return toPassportExtractionData(dataPayload.passport_extraction);
+  };
+  const getPassportIdentitySummary = (item: AdminApplicationRecord | null | undefined) => {
+    const extraction = getPrimaryPassportExtraction(item);
+    if (!extraction) return [];
+
+    return [
+      { key: "name", label: t("form.name"), value: getPassportGivenName(extraction) },
+      { key: "surname", label: t("form.surname"), value: getPassportSurname(extraction) },
+      { key: "father_name", label: t("form.fatherName"), value: getPassportFatherName(extraction) },
+    ].filter((field) => field.value);
+  };
 
   const fetchData = async (serviceTab: ServiceTab) => {
     const table = tableMap[serviceTab];
@@ -462,6 +500,10 @@ export default function AdminPage() {
   };
 
   function renderStructuredValue(value: unknown, key: string, labelPrefix?: string): JSX.Element[] {
+    if (shouldHideStructuredKey(key)) {
+      return [];
+    }
+
     const label = labelPrefix || getLabelForKey(key);
     if (value === null || value === undefined || value === "") {
       return [];
@@ -567,6 +609,8 @@ export default function AdminPage() {
       ),
     ];
   }
+
+  const selectedPassportIdentity = getPassportIdentitySummary(selectedApp);
 
   if (loading)
     return (
@@ -989,6 +1033,23 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-500 mt-1 font-medium">
                       {getClientName(selectedApp)} · {getClientPhone(selectedApp)}
                     </p>
+                    {selectedPassportIdentity.length > 0 && (
+                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {selectedPassportIdentity.map((field) => (
+                          <div
+                            key={field.key}
+                            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 min-w-0"
+                          >
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {field.label}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900 break-words">
+                              {field.value}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <span className={cn("inline-flex items-center px-3 py-1.5 text-[11px] uppercase font-bold tracking-wider rounded-full border", (() => { const m: Record<string, string> = { pending: 'bg-amber-50 text-amber-600 border-amber-200', processing: 'bg-blue-50 text-blue-600 border-blue-200', completed: 'bg-emerald-50 text-emerald-600 border-emerald-200', rejected: 'bg-red-50 text-red-500 border-red-200' }; return selectedApp ? (m[selectedApp.status || ""] || 'bg-slate-50 text-slate-500 border-slate-200') : ''; })())}>
                     {selectedApp?.status ? (t(`admin.${selectedApp.status}`) || selectedApp.status) : ''}

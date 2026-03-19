@@ -8,6 +8,7 @@ import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import {
+  getPassportFatherName,
   getPassportGivenName,
   getPassportSurname,
   passportSexToGender,
@@ -40,6 +41,7 @@ export default function SigortaTurizm() {
       ...prev,
       name: prev.name || getPassportGivenName(extraction),
       surname: prev.surname || getPassportSurname(extraction),
+      father_name: prev.father_name || getPassportFatherName(extraction),
       birth_date: prev.birth_date || extraction.date_of_birth || '',
       nationality: prev.nationality || extraction.nationality || '',
       gender: prev.gender || gender,

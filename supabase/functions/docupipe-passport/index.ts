@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const DOCUPIPE_BASE_URL = "https://app.docupipe.ai";
-const PASSPORT_SCHEMA_NAME = "bitrx-passport-extraction-v1";
+const PASSPORT_SCHEMA_NAME = "bitrx-passport-extraction-v2";
 const PASSPORT_SCHEMA = {
   type: "object",
   properties: {
@@ -58,10 +58,6 @@ const PASSPORT_SCHEMA = {
     issuing_country: {
       type: "string",
       description: "Issuing country or issuing authority country.",
-    },
-    mrz: {
-      type: "string",
-      description: "Machine-readable zone text if readable.",
     },
   },
   additionalProperties: false,
@@ -258,7 +254,6 @@ function normalizePassportExtraction(data: JsonRecord) {
     place_of_birth: stringOrNull(data.place_of_birth),
     personal_number: stringOrNull(data.personal_number ?? data.identity_number),
     issuing_country: stringOrNull(data.issuing_country ?? data.country_of_issue),
-    mrz: stringOrNull(data.mrz),
   };
 }
 
