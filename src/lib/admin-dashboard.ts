@@ -1,5 +1,6 @@
 import type { Session } from "@supabase/supabase-js";
 import type { Tables } from "@/integrations/supabase/types";
+import { supabase } from "@/lib/supabase";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -82,13 +83,41 @@ const readFunctionError = (payload: unknown) => {
   return "";
 };
 
-async function invokeAdminFunction<T>(session: Session | null, body: unknown): Promise<T> {
-  const accessToken = session?.access_token?.trim();
-  if (!accessToken) {
+async function resolveAdminAccessToken(session: Session | null) {
+  const sessionToken = session?.access_token?.trim();
+
+  const {
+    data: { session: currentSession },
+  } = await supabase.auth.getSession();
+
+  const currentToken = currentSession?.access_token?.trim();
+  if (currentToken) {
+    return currentToken;
+  }
+
+  const {
+    data: { session: refreshedSession },
+    error: refreshError,
+  } = await supabase.auth.refreshSession();
+
+  const refreshedToken = refreshedSession?.access_token?.trim();
+  if (refreshedToken) {
+    return refreshedToken;
+  }
+
+  if (sessionToken) {
+    return sessionToken;
+  }
+
+  if (refreshError || !refreshedToken) {
     throw new Error("Admin session is missing.");
   }
 
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/admin-dashboard`, {
+  return refreshedToken;
+}
+
+async function sendAdminRequest(accessToken: string, body: unknown) {
+  return fetch(`${SUPABASE_URL}/functions/v1/admin-dashboard`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -97,6 +126,23 @@ async function invokeAdminFunction<T>(session: Session | null, body: unknown): P
     },
     body: JSON.stringify(body),
   });
+}
+
+async function invokeAdminFunction<T>(session: Session | null, body: unknown): Promise<T> {
+  let accessToken = await resolveAdminAccessToken(session);
+  let response = await sendAdminRequest(accessToken, body);
+
+  if (response.status === 401) {
+    const {
+      data: { session: refreshedSession },
+    } = await supabase.auth.refreshSession();
+
+    const refreshedToken = refreshedSession?.access_token?.trim();
+    if (refreshedToken) {
+      accessToken = refreshedToken;
+      response = await sendAdminRequest(accessToken, body);
+    }
+  }
 
   const raw = await response.text();
   let payload: unknown = null;
