@@ -11,6 +11,7 @@ import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
+import { recordStoredClientApplication } from '@/lib/client-tracking';
 import type { PassportUploadValue } from '@/lib/docupipe';
 import { MessageCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -98,6 +99,19 @@ export default function IkametForm({ category, type }: IkametFormProps) {
         supporter_type: type === 'aile' ? supporterType : null,
       });
       if (error) throw error;
+      await recordStoredClientApplication({
+        route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/ikamet',
+        serviceKey: 'ikamet',
+        referenceId: applicationId,
+        details: {
+          category,
+          type,
+          supporterType: type === 'aile' ? supporterType : null,
+          hasInsurance: form.has_insurance === 'yes',
+        },
+      }).catch((trackingError) => {
+        console.error('Residence application tracking error:', trackingError);
+      });
       void notifyAdminNewApplication('ikamet', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });

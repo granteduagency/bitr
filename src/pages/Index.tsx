@@ -2,63 +2,80 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Form, Input, Button } from "@heroui/react";
+import { ClientPhoneField } from "@/components/shared/ClientPhoneField";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import { InstallAppButton } from "@/components/shared/InstallAppButton";
 import {
-  formatClientPhoneInput,
+  getDefaultClientPhoneCountry,
   normalizeClientName,
-  toStoredClientPhone,
   validateClientName,
   validateClientPhone,
   sanitizeClientNameInput,
 } from "@/lib/client-entry";
+import {
+  clearStoredClientIdentity,
+  getStoredClientIdentity,
+  saveStoredClientIdentity,
+  syncStoredClientLead,
+} from "@/lib/client-tracking";
 import { Plane, Car, Luggage, Cloud } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const Index = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
     phone: "",
   });
+  const [phoneCountry, setPhoneCountry] = useState(getDefaultClientPhoneCountry());
   const [touched, setTouched] = useState({
     name: false,
     phone: false,
   });
 
   const normalizedName = useMemo(() => normalizeClientName(form.name), [form.name]);
-  const storedPhone = useMemo(() => toStoredClientPhone(form.phone), [form.phone]);
   const nameError = useMemo(() => validateClientName(form.name), [form.name]);
-  const phoneError = useMemo(() => validateClientPhone(form.phone), [form.phone]);
+  const phoneError = useMemo(
+    () => validateClientPhone(form.phone, phoneCountry),
+    [form.phone, phoneCountry],
+  );
   const canSubmit = !nameError && !phoneError;
 
   useEffect(() => {
-    const name = localStorage.getItem("client_name")?.trim();
-    const phone = localStorage.getItem("client_phone")?.trim();
+    const identity = getStoredClientIdentity();
 
-    if (!name && !phone) {
-      return;
-    }
-
-    if (!validateClientName(name || "") && !validateClientPhone(phone || "")) {
+    if (identity) {
+      setForm({
+        name: identity.name,
+        phone: identity.phone,
+      });
+      setPhoneCountry(identity.country);
       navigate("/dashboard", { replace: true });
       return;
     }
 
-    localStorage.removeItem("client_name");
-    localStorage.removeItem("client_phone");
+    clearStoredClientIdentity();
   }, [navigate]);
 
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setTouched({ name: true, phone: true });
 
     if (!canSubmit) return;
 
-    localStorage.setItem("client_name", normalizedName);
-    localStorage.setItem("client_phone", storedPhone);
+    saveStoredClientIdentity({
+      name: normalizedName,
+      phone: form.phone,
+      country: phoneCountry,
+    });
+    await syncStoredClientLead({
+      source: "landing",
+      preferredCountry: phoneCountry,
+    }).catch((error) => {
+      console.error("Lead sync error:", error);
+    });
     navigate("/dashboard");
   };
 
@@ -612,20 +629,21 @@ const Index = () => {
                     )}
                   </div>
 
-                  <Input
-                    required
-                    name="phone"
-                    type="tel"
+                  <ClientPhoneField
                     value={form.phone}
+                    country={phoneCountry}
                     onValueChange={(value) =>
-                      setForm((prev) => ({ ...prev, phone: formatClientPhoneInput(value) }))
+                      setForm((prev) => ({ ...prev, phone: value }))
                     }
+                    onCountryChange={(country) => {
+                      setPhoneCountry(country);
+                      setTouched((prev) => ({ ...prev, phone: true }));
+                    }}
                     onBlur={() => setTouched((prev) => ({ ...prev, phone: true }))}
                     placeholder={t("landing.phonePlaceholder")}
                     autoComplete="tel"
-                    inputMode="numeric"
-                    maxLength={17}
-                    className={`w-full h-14 bg-white/50 hover:bg-white focus-within:bg-white border-2 rounded-[0.85rem] shadow-none [&_input]:text-[15px] [&_input]:font-medium [&_input]:placeholder:text-slate-500 ${touched.phone && phoneError ? "border-red-500 focus-within:border-red-500" : "border-black focus-within:border-black"}`}
+                    locale={i18n.language}
+                    invalid={Boolean(touched.phone && phoneError)}
                   />
                   <div className="mt-[-6px] min-h-[20px] px-1">
                     {touched.phone && phoneError ? (

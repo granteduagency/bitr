@@ -73,6 +73,95 @@ export type Database = {
         }
         Relationships: []
       }
+      client_activity_logs: {
+        Row: {
+          action: string
+          created_at: string
+          details: Json
+          id: string
+          lead_id: string
+          reference_id: string | null
+          route: string | null
+          service_key: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: Json
+          id?: string
+          lead_id: string
+          reference_id?: string | null
+          route?: string | null
+          service_key?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: Json
+          id?: string
+          lead_id?: string
+          reference_id?: string | null
+          route?: string | null
+          service_key?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_activity_logs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "client_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_leads: {
+        Row: {
+          application_count: number
+          created_at: string
+          first_seen_at: string
+          id: string
+          last_action: string | null
+          last_activity_at: string
+          last_application_at: string | null
+          last_route: string | null
+          last_seen_at: string
+          last_service_key: string | null
+          metadata: Json
+          name: string
+          phone: string
+        }
+        Insert: {
+          application_count?: number
+          created_at?: string
+          first_seen_at?: string
+          id?: string
+          last_action?: string | null
+          last_activity_at?: string
+          last_application_at?: string | null
+          last_route?: string | null
+          last_seen_at?: string
+          last_service_key?: string | null
+          metadata?: Json
+          name: string
+          phone: string
+        }
+        Update: {
+          application_count?: number
+          created_at?: string
+          first_seen_at?: string
+          id?: string
+          last_action?: string | null
+          last_activity_at?: string
+          last_application_at?: string | null
+          last_route?: string | null
+          last_seen_at?: string
+          last_service_key?: string | null
+          metadata?: Json
+          name?: string
+          phone?: string
+        }
+        Relationships: []
+      }
       consulates: {
         Row: {
           address: string | null
@@ -601,6 +690,38 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      record_client_activity: {
+        Args: {
+          _action: string
+          _details?: Json
+          _name: string
+          _phone: string
+          _reference_id?: string | null
+          _route?: string | null
+          _service_key?: string | null
+        }
+        Returns: string
+      }
+      record_client_application: {
+        Args: {
+          _details?: Json
+          _name: string
+          _phone: string
+          _reference_id: string
+          _route?: string | null
+          _service_key: string
+        }
+        Returns: string
+      }
+      upsert_client_lead: {
+        Args: {
+          _entry_source?: string
+          _metadata?: Json
+          _name: string
+          _phone: string
+        }
+        Returns: string
       }
     }
     Enums: {

@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Home, Shield, HeartPulse, FileText, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { LanguageSwitcher } from '@/components/shared/LanguageSwitcher';
 import { InstallAppButton } from '@/components/shared/InstallAppButton';
+import { getServiceKeyFromPath, recordStoredClientActivity } from '@/lib/client-tracking';
 
 export function DashboardLayout() {
   const { t } = useTranslation();
@@ -18,6 +20,23 @@ export function DashboardLayout() {
     { icon: HeartPulse, label: t('services.sigorta'), path: '/dashboard/sigorta' },
     { icon: FileText, label: t('services.viza'), path: '/dashboard/viza' },
   ];
+
+  useEffect(() => {
+    const serviceKey = getServiceKeyFromPath(location.pathname);
+
+    void recordStoredClientActivity({
+      route: location.pathname,
+      serviceKey,
+      action: 'route_viewed',
+      details: {
+        pageTitle: document.title,
+      },
+      throttleKey: `route:${location.pathname}`,
+      throttleMs: 120000,
+    }).catch((error) => {
+      console.error('Route tracking error:', error);
+    });
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen bg-[#F7F5F2] relative">

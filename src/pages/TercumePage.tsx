@@ -8,6 +8,7 @@ import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
+import { recordStoredClientApplication } from '@/lib/client-tracking';
 import type { PassportUploadValue } from '@/lib/docupipe';
 import { toast } from '@/hooks/use-toast';
 import { motion } from 'framer-motion';
@@ -56,6 +57,18 @@ export default function TercumePage() {
         passport_extraction: selectedDocs.includes('passport') ? passportMeta?.extraction ?? null : null,
       });
       if (error) throw error;
+      await recordStoredClientApplication({
+        route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/tercume',
+        serviceKey: 'tercume',
+        referenceId: applicationId,
+        details: {
+          documentTypes: selectedDocs,
+          fromLanguage: fromLang,
+          toLanguage: toLang,
+        },
+      }).catch((trackingError) => {
+        console.error('Translation application tracking error:', trackingError);
+      });
       void notifyAdminNewApplication('tercume', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });

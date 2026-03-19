@@ -7,6 +7,10 @@ import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
+import {
+  recordStoredClientActivity,
+  recordStoredClientApplication,
+} from '@/lib/client-tracking';
 import type { PassportUploadValue } from '@/lib/docupipe';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -176,6 +180,20 @@ export default function UniversitePage() {
   const openResults = () => {
     setAppliedFilters(search);
     setStep('results');
+    void recordStoredClientActivity({
+      route: '/dashboard/universite',
+      serviceKey: 'universite',
+      action: 'university_search',
+      details: {
+        ...search,
+        workspaceName,
+        resultCount: filterUniversityCatalog(universities, search).length,
+      },
+      throttleKey: `university-search:${JSON.stringify(search)}`,
+      throttleMs: 15000,
+    }).catch((error) => {
+      console.error('University search tracking error:', error);
+    });
   };
 
   const handleDegreeChange = (value: string) => {
@@ -247,6 +265,21 @@ export default function UniversitePage() {
         ...form,
       });
       if (error) throw error;
+      await recordStoredClientApplication({
+        route: '/dashboard/universite',
+        serviceKey: 'universite',
+        referenceId: applicationId,
+        details: {
+          workspaceName,
+          universityName: selectedUni?.name ?? null,
+          degree: appliedFilters.degree || null,
+          faculty: appliedFilters.faculty || null,
+          program: appliedFilters.program || null,
+          language: appliedFilters.language || null,
+        },
+      }).catch((trackingError) => {
+        console.error('University application tracking error:', trackingError);
+      });
       void notifyAdminNewApplication('universite', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
@@ -320,7 +353,28 @@ export default function UniversitePage() {
             <motion.div key={uni.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
               className="rounded-[1.5rem] p-5 cursor-pointer group transition-all duration-300 hover:shadow-lg hover:-translate-y-1 min-h-[160px] flex flex-col justify-between"
               style={{ backgroundColor: UNI_COLORS[i % UNI_COLORS.length].bg }}
-              onClick={() => { setSelectedUni(uni); setStep('apply'); }}
+              onClick={() => {
+                void recordStoredClientActivity({
+                  route: '/dashboard/universite',
+                  serviceKey: 'universite',
+                  action: 'university_selected',
+                  details: {
+                    universityId: uni.id,
+                    universityName: uni.name,
+                    workspaceName,
+                    degree: appliedFilters.degree || null,
+                    faculty: appliedFilters.faculty || null,
+                    program: appliedFilters.program || null,
+                    language: appliedFilters.language || null,
+                  },
+                  throttleKey: `university-selected:${uni.id}:${appliedFilters.program}:${appliedFilters.language}`,
+                  throttleMs: 10000,
+                }).catch((error) => {
+                  console.error('University selection tracking error:', error);
+                });
+                setSelectedUni(uni);
+                setStep('apply');
+              }}
             >
               <div className="flex items-start gap-3">
                 {uni.logoUrl ? (

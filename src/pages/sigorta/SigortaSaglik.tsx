@@ -9,6 +9,7 @@ import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
+import { recordStoredClientApplication } from '@/lib/client-tracking';
 import {
   passportSexToGender,
   type PassportExtractionData,
@@ -62,6 +63,19 @@ export default function SigortaSaglik() {
         },
       });
       if (error) throw error;
+      await recordStoredClientApplication({
+        route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/sigorta/saglik',
+        serviceKey: 'sigorta',
+        referenceId: applicationId,
+        details: {
+          type: 'saglik',
+          citizenType,
+          country: form.country,
+          duration: form.duration,
+        },
+      }).catch((trackingError) => {
+        console.error('Health insurance tracking error:', trackingError);
+      });
       void notifyAdminNewApplication('sigorta', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });

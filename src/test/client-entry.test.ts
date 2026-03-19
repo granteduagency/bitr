@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   formatClientPhoneInput,
+  getDefaultClientPhoneCountry,
   normalizeClientName,
-  normalizeClientPhoneDigits,
   toStoredClientPhone,
   validateClientName,
   validateClientPhone,
@@ -16,16 +16,17 @@ describe("client entry helpers", () => {
     expect(validateClientName("A Z")).toBe("landing.nameErrorShort");
   });
 
-  it("normalizes and formats Turkish mobile numbers", () => {
-    expect(normalizeClientPhoneDigits("+90 (501) 008-88-01")).toBe("5010088801");
-    expect(formatClientPhoneInput("05010088801")).toBe("+90 501 008 88 01");
-    expect(toStoredClientPhone("05010088801")).toBe("+90 501 008 88 01");
+  it("normalizes and formats E.164 phone numbers", () => {
+    expect(toStoredClientPhone("+905010088801")).toBe("+905010088801");
+    expect(formatClientPhoneInput("+905010088801")).toContain("+90");
+    expect(getDefaultClientPhoneCountry("+998901234567")).toBe("UZ");
   });
 
-  it("rejects obviously fake phone numbers", () => {
-    expect(validateClientPhone("+90 501 008 88 01")).toBeNull();
-    expect(validateClientPhone("1234")).toBe("landing.phoneErrorInvalid");
-    expect(validateClientPhone("+90 555 555 55 55")).toBe("landing.phoneErrorFake");
-    expect(validateClientPhone("+90 500 000 00 00")).toBe("landing.phoneErrorFake");
+  it("accepts valid international numbers and blocks fake ones", () => {
+    expect(validateClientPhone("+998901234567", "UZ")).toBeNull();
+    expect(validateClientPhone("+905010088801", "TR")).toBeNull();
+    expect(validateClientPhone("+905555555555", "TR")).toBe("landing.phoneErrorFake");
+    expect(validateClientPhone("+902121231234", "TR")).toBe("landing.phoneErrorTurkeyMobile");
+    expect(validateClientPhone("1234", "TR")).toBe("landing.phoneErrorInvalid");
   });
 });

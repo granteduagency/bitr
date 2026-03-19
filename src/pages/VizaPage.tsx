@@ -5,6 +5,7 @@ import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
+import { recordStoredClientApplication } from '@/lib/client-tracking';
 import { toast } from '@/hooks/use-toast';
 import { Plane, Briefcase, GraduationCap, Users, Globe, ArrowRightLeft, Truck, ArrowUpRight, type LucideIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -50,6 +51,19 @@ export default function VizaPage() {
         .from('visa_applications')
         .insert({ id: applicationId, client_id: cId, type: selectedType!, ...form });
       if (error) throw error;
+      await recordStoredClientApplication({
+        route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/viza',
+        serviceKey: 'visa',
+        referenceId: applicationId,
+        details: {
+          type: selectedType,
+          fromCountry: form.from_country,
+          toCountry: form.to_country,
+          travelDate: form.travel_date,
+        },
+      }).catch((trackingError) => {
+        console.error('Visa application tracking error:', trackingError);
+      });
       void notifyAdminNewApplication('visa', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });

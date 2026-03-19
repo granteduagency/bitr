@@ -7,6 +7,7 @@ import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
+import { recordStoredClientApplication } from '@/lib/client-tracking';
 import { toast } from '@/hooks/use-toast';
 import { motion } from 'framer-motion';
 import { Briefcase, Plane } from 'lucide-react';
@@ -35,6 +36,18 @@ export default function CalismaForm() {
         documents_url: docs, notes,
       });
       if (error) throw error;
+      await recordStoredClientApplication({
+        route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/calisma',
+        serviceKey: 'calisma',
+        referenceId: applicationId,
+        details: {
+          type: type === 'yurt-ici' ? 'yurt_ici' : 'yurt_disi',
+          documents: docs.length,
+          notes,
+        },
+      }).catch((trackingError) => {
+        console.error('Work permit tracking error:', trackingError);
+      });
       void notifyAdminNewApplication('calisma', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });

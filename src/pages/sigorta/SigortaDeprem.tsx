@@ -6,6 +6,7 @@ import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
+import { recordStoredClientApplication } from '@/lib/client-tracking';
 import { toast } from '@/hooks/use-toast';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -39,6 +40,19 @@ export default function SigortaDeprem() {
         .from('sigorta_applications')
         .insert({ id: applicationId, client_id: cId, type: 'deprem', data: { ...form, idType } });
       if (error) throw error;
+      await recordStoredClientApplication({
+        route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/sigorta/deprem',
+        serviceKey: 'sigorta',
+        referenceId: applicationId,
+        details: {
+          type: 'deprem',
+          idType,
+          buildingType: form.building_type,
+          usageType: form.usage_type,
+        },
+      }).catch((trackingError) => {
+        console.error('Earthquake insurance tracking error:', trackingError);
+      });
       void notifyAdminNewApplication('sigorta', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });

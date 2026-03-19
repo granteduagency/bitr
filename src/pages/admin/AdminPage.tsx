@@ -25,8 +25,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { FieldGroup, Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import {
   Table,
   TableBody,
@@ -35,7 +33,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import {
@@ -55,8 +52,6 @@ import {
   Bell,
   ChevronDown,
   ArrowUpRight,
-  ArrowDownRight,
-  Plus,
   Home,
   ShieldCheck,
   Plane,
@@ -133,7 +128,7 @@ const SERVICE_DETAIL_SECTIONS: Record<ServiceTab, DetailSectionConfig[]> = {
 };
 
 type ServiceTab = keyof typeof tableMap;
-type AdminTab = "dashboard" | "clients" | "settings" | ServiceTab;
+type AdminTab = "dashboard" | "clients" | "prospects" | "settings" | ServiceTab;
 type ApplicationTableName = (typeof tableMap)[ServiceTab];
 type ClientRecord = Tables<"clients">;
 type ClientSummary = Pick<ClientRecord, "name" | "phone">;
@@ -151,6 +146,9 @@ type AdminApplicationMap = {
   universite: Tables<"university_applications"> & ClientRelation;
 };
 type AdminApplicationRecord = AdminApplicationMap[ServiceTab];
+type LeadTab = "clients" | "prospects";
+type LeadRecord = Tables<"client_leads">;
+type ActivityLogRecord = Tables<"client_activity_logs">;
 type TabItem = {
   key: AdminTab;
   label: string;
@@ -182,6 +180,15 @@ const formatNotificationDate = (value: string) =>
     minute: "2-digit",
   });
 
+const formatLeadActivityDate = (value: string) =>
+  new Date(value).toLocaleString([], {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 const fetchAdminApplicationById = async (serviceTab: ServiceTab, id: string) => {
   const { data, error } = await supabase
     .from(tableMap[serviceTab])
@@ -206,13 +213,20 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<AdminTab>("dashboard");
   const [data, setData] = useState<AdminApplicationRecord[]>([]);
-  const [clients, setClients] = useState<ClientRecord[]>([]);
+  const [serviceCache, setServiceCache] = useState<Partial<Record<ServiceTab, AdminApplicationRecord[]>>>({});
+  const [clients, setClients] = useState<LeadRecord[]>([]);
+  const [prospects, setProspects] = useState<LeadRecord[]>([]);
+  const [selectedLead, setSelectedLead] = useState<LeadRecord | null>(null);
+  const [leadActivities, setLeadActivities] = useState<ActivityLogRecord[]>([]);
+  const [leadActivitiesLoading, setLeadActivitiesLoading] = useState(false);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ url: string; label: string } | null>(null);
   const [imagePreviewLoading, setImagePreviewLoading] = useState(false);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(false);
+  const [prospectsLoading, setProspectsLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
+  const [adminBootstrapped, setAdminBootstrapped] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
     fullName: "",
     avatarUrl: "",
@@ -228,7 +242,11 @@ export default function AdminPage() {
     pending: 0,
     completed: 0,
     today: 0,
+    allClients: 0,
+    prospects: 0,
+    applicants: 0,
   });
+  const sessionUserId = session?.user.id ?? null;
 
   useEffect(() => {
     supabase.auth.onAuthStateChange((_, s) => {
@@ -336,6 +354,35 @@ export default function AdminPage() {
     setTab(serviceTab);
     setSelectedApp(application);
     window.history.replaceState({}, document.title, "/admin");
+  }, [t]);
+
+  const openLeadDetails = useCallback(async (lead: LeadRecord) => {
+    setSelectedLead(lead);
+    setLeadActivitiesLoading(true);
+
+    try {
+      const { data: logs, error } = await supabase
+        .from("client_activity_logs")
+        .select("*")
+        .eq("lead_id", lead.id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      setLeadActivities(logs || []);
+    } catch (error) {
+      console.error("Fetch lead activity error:", error);
+      setLeadActivities([]);
+      toast({
+        title: t("common.error"),
+        description: t("admin.clientActivityLoadError"),
+        variant: "destructive",
+      });
+    } finally {
+      setLeadActivitiesLoading(false);
+    }
   }, [t]);
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -607,6 +654,60 @@ export default function AdminPage() {
       { key: "father_name", label: t("form.fatherName"), value: getPassportFatherName(extraction) },
     ].filter((field) => field.value);
   };
+  const getLeadStatusLabel = (lead: LeadRecord) =>
+    lead.application_count > 0 ? t("admin.convertedClient") : t("admin.prospectClient");
+  const getLeadStatusClasses = (lead: LeadRecord) =>
+    lead.application_count > 0
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : "bg-amber-50 text-amber-700 border-amber-200";
+  const getLeadServiceLabel = (lead: LeadRecord) =>
+    lead.last_service_key && isServiceTabKey(lead.last_service_key)
+      ? getServiceLabel(lead.last_service_key)
+      : t("admin.dashboardActivity");
+  const getLeadActionLabel = (action: string | null | undefined) => {
+    switch (action) {
+      case "route_viewed":
+        return t("admin.activityRouteViewed");
+      case "university_search":
+        return t("admin.activityUniversitySearch");
+      case "university_selected":
+        return t("admin.activityUniversitySelected");
+      case "appointment_document_parsed":
+        return t("admin.activityAppointmentParsed");
+      case "appointment_check_completed":
+        return t("admin.activityAppointmentChecked");
+      case "application_submitted":
+        return t("admin.activityApplicationSubmitted");
+      default:
+        return t("admin.activityVisited");
+    }
+  };
+  const getActivityDescription = (activity: ActivityLogRecord) => {
+    const details = isJsonObject(activity.details) ? activity.details : null;
+    const route = readText(activity.route);
+    const status = readText(details?.status);
+    const universityName = readText(details?.universityName);
+    const type = readText(details?.type);
+
+    switch (activity.action) {
+      case "route_viewed":
+        return route || t("admin.routeUnknown");
+      case "university_search":
+        return [readText(details?.degree), readText(details?.faculty), readText(details?.program), readText(details?.language)]
+          .filter(Boolean)
+          .join(" · ") || t("admin.universitySearchWithoutFilters");
+      case "university_selected":
+        return universityName || t("admin.universitySelection");
+      case "appointment_document_parsed":
+        return t("admin.appointmentDocumentReady");
+      case "appointment_check_completed":
+        return status || t("admin.appointmentCheckFinished");
+      case "application_submitted":
+        return type || getLeadActionLabel(activity.action);
+      default:
+        return getLeadActionLabel(activity.action);
+    }
+  };
   const getAdminDisplayName = (currentSession: Session | null) =>
     (typeof currentSession?.user?.user_metadata?.full_name === "string"
       ? currentSession.user.user_metadata.full_name.trim()
@@ -627,6 +728,7 @@ export default function AdminPage() {
   const getTabLabel = (value: AdminTab) => {
     if (value === "dashboard") return t("admin.dashboard");
     if (value === "clients") return t("admin.clients");
+    if (value === "prospects") return t("admin.prospects");
     if (value === "settings") return t("admin.settings");
     return getServiceLabel(value);
   };
@@ -640,26 +742,30 @@ export default function AdminPage() {
 
     if (error) {
       console.error("Fetch data error:", error);
-      setData([]);
-      return;
+      return [];
     }
 
-    setData((rows || []) as AdminApplicationRecord[]);
+    return (rows || []) as AdminApplicationRecord[];
   };
 
-  const fetchClients = async () => {
-    const { data: d, error } = await supabase
-      .from("clients")
+  const fetchLeadList = async (leadTab: LeadTab) => {
+    let query = supabase
+      .from("client_leads")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("last_activity_at", { ascending: false });
 
-    if (error) {
-      console.error("Fetch clients error:", error);
-      setClients([]);
-      return;
+    if (leadTab === "prospects") {
+      query = query.eq("application_count", 0);
     }
 
-    setClients(d || []);
+    const { data: rows, error } = await query;
+
+    if (error) {
+      console.error("Fetch leads error:", error);
+      return [];
+    }
+
+    return rows || [];
   };
 
   const fetchStats = async () => {
@@ -670,78 +776,168 @@ export default function AdminPage() {
       today = 0;
     const todayStr = new Date().toISOString().split("T")[0];
     for (const table of tables) {
-      const { count: c1 } = await supabase.from(table).select(
-        "*",
-        { count: "exact", head: true },
-      );
-      const { count: c2 } = await supabase.from(table)
-        .select("*", { count: "exact", head: true })
-        .eq("status", "pending");
-      const { count: c3 } = await supabase.from(table)
-        .select("*", { count: "exact", head: true })
-        .eq("status", "completed");
-      const { count: c4 } = await supabase.from(table)
-        .select("*", { count: "exact", head: true })
-        .gte("created_at", todayStr);
+      const [{ count: c1 }, { count: c2 }, { count: c3 }, { count: c4 }] =
+        await Promise.all([
+          supabase.from(table).select("*", { count: "exact", head: true }),
+          supabase.from(table).select("*", { count: "exact", head: true }).eq("status", "pending"),
+          supabase.from(table).select("*", { count: "exact", head: true }).eq("status", "completed"),
+          supabase.from(table).select("*", { count: "exact", head: true }).gte("created_at", todayStr),
+        ]);
       total += c1 || 0;
       pending += c2 || 0;
       completed += c3 || 0;
       today += c4 || 0;
     }
-    setStats({ total, pending, completed, today });
+
+    const [{ count: allClients }, { count: prospectsCount }, { count: applicantsCount }] =
+      await Promise.all([
+        supabase.from("client_leads").select("*", { count: "exact", head: true }),
+        supabase.from("client_leads").select("*", { count: "exact", head: true }).eq("application_count", 0),
+        supabase.from("client_leads").select("*", { count: "exact", head: true }).gt("application_count", 0),
+      ]);
+
+    return {
+      total,
+      pending,
+      completed,
+      today,
+      allClients: allClients || 0,
+      prospects: prospectsCount || 0,
+      applicants: applicantsCount || 0,
+    };
   };
 
   useEffect(() => {
-    if (!session) return;
+    if (!sessionUserId) {
+      setServiceCache({});
+      setData([]);
+      setClients([]);
+      setProspects([]);
+      setSelectedLead(null);
+      setLeadActivities([]);
+      setAdminBootstrapped(false);
+      return;
+    }
 
     let isActive = true;
 
-    const loadCurrentTab = async () => {
-      if (tab === "dashboard") {
-        setDashboardLoading(true);
-        try {
-          await Promise.all([fetchStats(), fetchClients()]);
-        } finally {
-          if (isActive) {
-            setDashboardLoading(false);
-          }
+    const bootstrapAdminData = async () => {
+      setDashboardLoading(true);
+      setClientsLoading(true);
+      setProspectsLoading(true);
+      setDataLoading(false);
+
+      try {
+        const [nextStats, nextClients, nextProspects, nextServiceEntries] = await Promise.all([
+          fetchStats(),
+          fetchLeadList("clients"),
+          fetchLeadList("prospects"),
+          Promise.all(
+            applicationTableEntries.map(async ([serviceTab]) => [serviceTab, await fetchData(serviceTab)] as const),
+          ),
+        ]);
+
+        if (!isActive) {
+          return;
         }
+
+        const nextServiceCache = Object.fromEntries(nextServiceEntries) as Partial<
+          Record<ServiceTab, AdminApplicationRecord[]>
+        >;
+
+        setStats(nextStats);
+        setClients(nextClients);
+        setProspects(nextProspects);
+        setServiceCache(nextServiceCache);
+        setAdminBootstrapped(true);
+      } finally {
+        if (isActive) {
+          setDashboardLoading(false);
+          setClientsLoading(false);
+          setProspectsLoading(false);
+          setDataLoading(false);
+        }
+      }
+    };
+
+    void bootstrapAdminData();
+
+    return () => {
+      isActive = false;
+    };
+  }, [sessionUserId]);
+
+  useEffect(() => {
+    if (!sessionUserId || !adminBootstrapped) {
+      return;
+    }
+
+    if (isServiceTab(tab)) {
+      setData(serviceCache[tab] || []);
+    }
+  }, [adminBootstrapped, serviceCache, sessionUserId, tab]);
+
+  useEffect(() => {
+    if (!sessionUserId || !adminBootstrapped) {
+      return;
+    }
+
+    let isActive = true;
+
+    const refreshCurrentTab = async () => {
+      if (tab === "dashboard") {
+        const [nextStats, nextClients, nextProspects] = await Promise.all([
+          fetchStats(),
+          fetchLeadList("clients"),
+          fetchLeadList("prospects"),
+        ]);
+
+        if (!isActive) {
+          return;
+        }
+
+        setStats(nextStats);
+        setClients(nextClients);
+        setProspects(nextProspects);
         return;
       }
 
       if (tab === "clients") {
-        setClientsLoading(true);
-        try {
-          await fetchClients();
-        } finally {
-          if (isActive) {
-            setClientsLoading(false);
-          }
+        const nextClients = await fetchLeadList("clients");
+        if (isActive) {
+          setClients(nextClients);
+        }
+        return;
+      }
+
+      if (tab === "prospects") {
+        const nextProspects = await fetchLeadList("prospects");
+        if (isActive) {
+          setProspects(nextProspects);
         }
         return;
       }
 
       if (isServiceTab(tab)) {
-        setDataLoading(true);
-        try {
-          await fetchData(tab);
-        } finally {
-          if (isActive) {
-            setDataLoading(false);
-          }
+        const nextRows = await fetchData(tab);
+        if (!isActive) {
+          return;
         }
+
+        setServiceCache((prev) => ({ ...prev, [tab]: nextRows }));
+        setData(nextRows);
       }
     };
 
-    void loadCurrentTab();
+    void refreshCurrentTab();
 
     return () => {
       isActive = false;
     };
-  }, [session, tab]);
+  }, [adminBootstrapped, sessionUserId, tab]);
 
   useEffect(() => {
-    if (!session || typeof window === "undefined") return;
+    if (!sessionUserId || typeof window === "undefined") return;
 
     const params = new URLSearchParams(window.location.search);
     const serviceTab = params.get("tab");
@@ -753,14 +949,14 @@ export default function AdminPage() {
     }
 
     void openNotificationItem(serviceTab, applicationId);
-  }, [openNotificationItem, session]);
+  }, [openNotificationItem, sessionUserId]);
 
   useEffect(() => {
-    if (!session || typeof window === "undefined") return;
+    if (!sessionUserId || typeof window === "undefined") return;
 
     let isActive = true;
 
-    const channels = applicationTableEntries.map(([serviceTab, table]) =>
+    const applicationChannels = applicationTableEntries.map(([serviceTab, table]) =>
       supabase
         .channel(`admin-notifications-${table}`)
         .on(
@@ -792,6 +988,16 @@ export default function AdminPage() {
             };
 
             setNotifications((prev) => [notification, ...prev].slice(0, 20));
+            setServiceCache((prev) => ({
+              ...prev,
+              [serviceTab]: [
+                application,
+                ...(prev[serviceTab] || []).filter((item) => item.id !== application.id),
+              ],
+            }));
+            if (tab === serviceTab) {
+              setData((prev) => [application, ...prev.filter((item) => item.id !== application.id)]);
+            }
             setStats((prev) => ({
               total: prev.total + 1,
               pending: prev.pending + 1,
@@ -803,13 +1009,37 @@ export default function AdminPage() {
         .subscribe(),
     );
 
+    const leadChannel = supabase
+      .channel("admin-client-leads")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "client_leads" },
+        async () => {
+          const [nextStats, nextClients, nextProspects] = await Promise.all([
+            fetchStats(),
+            fetchLeadList("clients"),
+            fetchLeadList("prospects"),
+          ]);
+
+          if (!isActive) {
+            return;
+          }
+
+          setStats(nextStats);
+          setClients(nextClients);
+          setProspects(nextProspects);
+        },
+      )
+      .subscribe();
+
     return () => {
       isActive = false;
-      channels.forEach((channel) => {
+      applicationChannels.forEach((channel) => {
         void supabase.removeChannel(channel);
       });
+      void supabase.removeChannel(leadChannel);
     };
-  }, [session, t]);
+  }, [sessionUserId, t, tab]);
 
   const updateStatus = async (id: string, status: string) => {
     if (!isServiceTab(tab)) return;
@@ -818,22 +1048,12 @@ export default function AdminPage() {
       .from(tableMap[tab])
       .update({ status })
       .eq("id", id);
-    fetchData(tab);
+    setServiceCache((prev) => ({
+      ...prev,
+      [tab]: (prev[tab] || []).map((item) => (item.id === id ? { ...item, status } : item)),
+    }));
+    setData((prev) => prev.map((item) => (item.id === id ? { ...item, status } : item)));
     toast({ title: t("common.success") });
-  };
-
-  const statusBadge = (s: string) => {
-    const map: Record<string, string> = {
-      pending: "bg-warning/10 text-warning border-warning/20",
-      processing: "bg-info/10 text-info border-info/20",
-      completed: "bg-success/10 text-success border-success/20",
-      rejected: "bg-destructive/10 text-destructive border-destructive/20",
-    };
-    return (
-      <Badge variant="outline" className={`${map[s] || ""} font-medium`}>
-        {t(`admin.${s}`)}
-      </Badge>
-    );
   };
 
   const humanizeKey = (key: string) =>
@@ -1421,6 +1641,7 @@ export default function AdminPage() {
   const tabs: TabItem[] = [
     { key: "dashboard", label: t("admin.dashboard"), icon: Grip },
     { key: "clients", label: t("admin.clients"), icon: Users },
+    { key: "prospects", label: t("admin.prospects"), icon: Search },
     { key: "ikamet", label: t("services.ikamet"), icon: Home },
     { key: "sigorta", label: t("services.sigorta"), icon: ShieldCheck },
     { key: "visa", label: t("services.viza"), icon: Plane },
@@ -1436,13 +1657,16 @@ export default function AdminPage() {
     { label: t("admin.pendingApplications"), value: stats.pending.toString(), bg: "bg-[#e4dfd9]", badge: t("admin.wait"), badgeColors: "bg-[#e3d1a8] text-slate-800", icon: Clock },
     { label: t("admin.completedApplications"), value: stats.completed.toString(), bg: "bg-[#dbeef0]", badge: t("admin.done"), badgeColors: "bg-[#fae29f] text-slate-800", icon: CheckCircle },
     { label: t("admin.todayApplications"), value: stats.today.toString(), bg: "bg-[#fae7cb]", badge: t("admin.24h"), badgeColors: "bg-[#e3d1a8] text-slate-800", icon: FileText },
-    { label: t("admin.clients"), value: clients.length.toString(), bg: "bg-[#e8ebed]", badge: "", badgeColors: "", icon: Users },
-    { label: t("services.ikamet"), value: "—", bg: "bg-[#cadded]", badge: "", badgeColors: "", icon: FileText },
-    { label: t("services.viza"), value: "—", bg: "bg-[#ecdcc5]", badge: "", badgeColors: "", icon: Clock },
-    { label: t("services.sigorta"), value: "—", bg: "bg-[#d5ced5]", badge: "", badgeColors: "", icon: CheckCircle },
-    { label: t("services.calisma"), value: "—", bg: "bg-[#ebd1d8]", badge: "", badgeColors: "", icon: Clock },
-    { isEmpty: true, bg: "bg-[#f4f3f0]" },
+    { label: t("admin.convertedClients"), value: stats.applicants.toString(), bg: "bg-[#e8ebed]", badge: "", badgeColors: "", icon: Users },
+    { label: t("services.ikamet"), value: String(serviceCache.ikamet?.length || 0), bg: "bg-[#cadded]", badge: "", badgeColors: "", icon: FileText },
+    { label: t("services.viza"), value: String(serviceCache.visa?.length || 0), bg: "bg-[#ecdcc5]", badge: "", badgeColors: "", icon: Clock },
+    { label: t("services.sigorta"), value: String(serviceCache.sigorta?.length || 0), bg: "bg-[#d5ced5]", badge: "", badgeColors: "", icon: CheckCircle },
+    { label: t("services.calisma"), value: String(serviceCache.calisma?.length || 0), bg: "bg-[#ebd1d8]", badge: "", badgeColors: "", icon: Clock },
+    { label: t("admin.allClients"), value: stats.allClients.toString(), bg: "bg-[#f4f3f0]", badge: "", badgeColors: "", icon: Search },
   ];
+  const isLeadTab = tab === "clients" || tab === "prospects";
+  const activeLeadRows = tab === "prospects" ? prospects : clients;
+  const activeLeadLoading = tab === "prospects" ? prospectsLoading : clientsLoading;
   const unreadNotifications = notifications.filter((notification) => !notification.read).length;
 
   return (
@@ -1634,22 +1858,13 @@ export default function AdminPage() {
                         {s.badge}
                       </div>
                     )}
-                    {!s.isEmpty && (
-                      <>
-                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center mt-6 shadow-sm border border-black/5">
-                          <s.icon className="w-4 h-4 text-slate-700" />
-                        </div>
-                        <h3 className="text-2xl font-black text-slate-800 tracking-tight mt-2 font-heading">{s.value}</h3>
-                        <p className="text-[11px] font-bold text-slate-500 mt-1 first-letter:uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis max-w-[95%]">
-                          {s.label}
-                        </p>
-                      </>
-                    )}
-                    {s.isEmpty && (
-                      <div className="w-10 h-10 rounded-full border-2 border-dashed border-slate-300 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:border-slate-400 transition-colors cursor-pointer">
-                        <Plus className="w-5 h-5" />
-                      </div>
-                    )}
+                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center mt-6 shadow-sm border border-black/5">
+                      <s.icon className="w-4 h-4 text-slate-700" />
+                    </div>
+                    <h3 className="text-2xl font-black text-slate-800 tracking-tight mt-2 font-heading">{s.value}</h3>
+                    <p className="text-[11px] font-bold text-slate-500 mt-1 first-letter:uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis max-w-[95%]">
+                      {s.label}
+                    </p>
                   </motion.div>
                 ))}
               </div>
@@ -1677,12 +1892,18 @@ export default function AdminPage() {
                       <div className="grid grid-cols-2 gap-y-8 gap-x-6">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2 text-[#4ade80] text-xl font-black tracking-tight font-heading">
-                            <Users className="w-5 h-5" /> {clients.length}
+                            <Users className="w-5 h-5" /> {stats.allClients}
                           </div>
-                          <p className="text-slate-400 text-xs font-semibold">{t("admin.clients")}</p>
+                          <p className="text-slate-400 text-xs font-semibold">{t("admin.allClients")}</p>
                         </div>
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2 text-[#f87171] text-xl font-black tracking-tight font-heading">
+                            <Search className="w-5 h-5" /> {stats.prospects}
+                          </div>
+                          <p className="text-slate-400 text-xs font-semibold">{t("admin.prospects")}</p>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 text-[#4ade80] text-xl font-black tracking-tight font-heading">
                             <Clock className="w-5 h-5" /> {stats.pending}
                           </div>
                           <p className="text-slate-400 text-xs font-semibold">{t("admin.pendingApplications")}</p>
@@ -1693,12 +1914,6 @@ export default function AdminPage() {
                           </div>
                           <p className="text-slate-400 text-xs font-semibold">{t("admin.completedApplications")}</p>
                         </div>
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2 text-slate-300 text-xl font-black tracking-tight font-heading">
-                            <ArrowUpRight className="w-5 h-5 rotate-45 text-slate-600" /> {stats.today}
-                          </div>
-                          <p className="text-slate-400 text-xs font-semibold">{t("admin.todayApplications")}</p>
-                        </div>
                       </div>
                     )}
                   </div>
@@ -1708,7 +1923,7 @@ export default function AdminPage() {
                   <div className="flex flex-wrap items-center justify-between px-2 gap-4">
                     <h3 className="font-bold text-[17px] text-slate-800">{t("admin.clients")}</h3>
                     <div className="flex flex-wrap gap-5 text-xs font-bold text-slate-500">
-                      <button className="flex items-center gap-1.5 hover:text-slate-800 transition-colors"><Users className="w-4 h-4" /> {clients.length}</button>
+                      <button className="flex items-center gap-1.5 hover:text-slate-800 transition-colors"><Users className="w-4 h-4" /> {stats.allClients}</button>
                       <button className="flex items-center gap-1.5 text-slate-800 transition-colors"><BarChart3 className="w-4 h-4" /> {t("admin.dashboard")}</button>
                     </div>
                   </div>
@@ -1730,11 +1945,11 @@ export default function AdminPage() {
                           <div className="w-[30%] truncate pr-2" title={c.name}>{c.name}</div>
                           <div className="w-[25%] text-slate-600 font-medium">{c.phone}</div>
                           <div className="w-[20%] text-slate-600 font-medium">
-                             <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] uppercase">
-                               {t("admin.clients")}
+                             <div className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] uppercase border", getLeadStatusClasses(c))}>
+                               {getLeadStatusLabel(c)}
                              </div>
                           </div>
-                          <div className="w-[25%] text-slate-600 font-medium italic">{formatNullableDate(c.created_at)}</div>
+                          <div className="w-[25%] text-slate-600 font-medium italic">{formatNullableDate(c.last_activity_at)}</div>
                           <div className="w-10 flex justify-end">
                              <div className={cn("inline-flex w-9 h-[18px] rounded-full p-0.5", i % 2 === 0 ? "bg-black text-white" : "bg-slate-300")}>
                                <div className={cn("w-3.5 h-3.5 bg-white rounded-full transition-transform shadow-sm", i % 2 === 0 ? "translate-x-4" : "")}></div>
@@ -1859,10 +2074,10 @@ export default function AdminPage() {
                      {getTabLabel(tab)}
                  </h3>
                  <p className="text-slate-400 text-sm mt-0.5">
-                   {(tab === 'clients' ? clientsLoading : dataLoading)
+                   {(isLeadTab ? activeLeadLoading : dataLoading)
                      ? ''
-                     : (tab === 'clients' ? clients.length : data.length) > 0
-                       ? `${tab === 'clients' ? clients.length : data.length} ${t('admin.totalApplications')}`
+                     : (isLeadTab ? activeLeadRows.length : data.length) > 0
+                       ? `${isLeadTab ? activeLeadRows.length : data.length} ${t(isLeadTab ? 'admin.totalContacts' : 'admin.totalApplications')}`
                        : ''}
                  </p>
                </div>
@@ -1870,26 +2085,41 @@ export default function AdminPage() {
                <Table>
                  <TableHeader>
                    <TableRow className="border-b border-slate-50 hover:bg-transparent">
-                     {tab !== 'clients' && <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest w-12 text-center pl-8">#</TableHead>}
+                     {!isLeadTab && <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest w-12 text-center pl-8">#</TableHead>}
                      <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest">{t("form.name")}</TableHead>
                      <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest">{t("form.phone")}</TableHead>
-                     <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest">{t("admin.date")}</TableHead>
-                     {tab !== 'clients' && <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest text-center">{t("admin.status")}</TableHead>}
-                     {tab !== 'clients' && <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest text-right pr-8">{t("admin.actions")}</TableHead>}
+                     <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest">{t(isLeadTab ? "admin.lastActivity" : "admin.date")}</TableHead>
+                     <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest text-center">{t("admin.status")}</TableHead>
+                     <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest text-right pr-8">{t("admin.actions")}</TableHead>
                    </TableRow>
                  </TableHeader>
                  <TableBody>
-                   {tab === 'clients' && clientsLoading ? (
-                     Array.from({ length: 5 }, (_, index) => renderAdminTableSkeletonRow(`clients-loading-${index}`, false, false, false))
-                   ) : tab === 'clients' ? clients.length === 0 ? (
+                   {isLeadTab && activeLeadLoading ? (
+                     Array.from({ length: 5 }, (_, index) => renderAdminTableSkeletonRow(`lead-loading-${index}`, false, true, true))
+                   ) : isLeadTab ? activeLeadRows.length === 0 ? (
                      <TableRow>
-                       <TableCell colSpan={3} className="text-center text-slate-400 py-12">{t('common.noData')}</TableCell>
+                       <TableCell colSpan={5} className="text-center text-slate-400 py-12">{t('common.noData')}</TableCell>
                      </TableRow>
-                   ) : clients.map((c) => (
-                       <TableRow key={c.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
-                       <TableCell className="font-bold text-slate-900 py-4 pl-8">{c.name}</TableCell>
-                       <TableCell className="text-slate-500 font-medium">{c.phone}</TableCell>
-                       <TableCell className="text-slate-400 font-medium">{formatNullableDate(c.created_at)}</TableCell>
+                   ) : activeLeadRows.map((lead) => (
+                       <TableRow key={lead.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors cursor-pointer" onClick={() => void openLeadDetails(lead)}>
+                       <TableCell className="font-bold text-slate-900 py-4 pl-8">{lead.name}</TableCell>
+                       <TableCell className="text-slate-500 font-medium">{lead.phone}</TableCell>
+                       <TableCell className="text-slate-400 font-medium">
+                         <div className="flex flex-col gap-1">
+                           <span>{getLeadActionLabel(lead.last_action)}</span>
+                           <span className="text-xs text-slate-400">{formatLeadActivityDate(lead.last_activity_at)}</span>
+                         </div>
+                       </TableCell>
+                       <TableCell className="text-center">
+                         <span className={cn("inline-flex items-center px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider rounded-full border", getLeadStatusClasses(lead))}>
+                           {getLeadStatusLabel(lead)}
+                         </span>
+                       </TableCell>
+                       <TableCell className="text-right pr-8">
+                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); void openLeadDetails(lead); }} className="text-slate-400 hover:text-slate-900 gap-1.5">
+                           <Eye className="w-3.5 h-3.5"/> {t("admin.detail")}
+                         </Button>
+                       </TableCell>
                      </TableRow>
                    )) : dataLoading ? (
                      Array.from({ length: 5 }, (_, index) => renderAdminTableSkeletonRow(`data-loading-${index}`))
@@ -1981,6 +2211,104 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog
+            open={!!selectedLead}
+            onOpenChange={(open) => {
+              if (!open) {
+                setSelectedLead(null);
+                setLeadActivities([]);
+              }
+            }}
+          >
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 bg-white rounded-xl border border-slate-200 shadow-2xl outline-none">
+              {selectedLead && (
+                <>
+                  <div className="px-6 py-5 border-b border-slate-100 shrink-0">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-lg font-bold text-slate-900 leading-none">
+                          {selectedLead.name}
+                        </h2>
+                        <p className="text-sm text-slate-500 mt-1 font-medium">
+                          {selectedLead.phone}
+                        </p>
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {t("admin.status")}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {getLeadStatusLabel(selectedLead)}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {t("admin.lastService")}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {getLeadServiceLabel(selectedLead)}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              {t("admin.lastActivity")}
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                              {formatLeadActivityDate(selectedLead.last_activity_at)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <span className={cn("inline-flex items-center px-3 py-1.5 text-[11px] uppercase font-bold tracking-wider rounded-full border", getLeadStatusClasses(selectedLead))}>
+                        {getLeadStatusLabel(selectedLead)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto bg-slate-50/50 px-6 py-6">
+                    <div className="space-y-3">
+                      {leadActivitiesLoading ? (
+                        Array.from({ length: 4 }, (_, index) => (
+                          <div key={index} className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <Skeleton className="h-4 w-40 rounded-full" />
+                            <Skeleton className="mt-3 h-3 w-56 rounded-full" />
+                            <Skeleton className="mt-2 h-3 w-24 rounded-full" />
+                          </div>
+                        ))
+                      ) : leadActivities.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-medium text-slate-500">
+                          {t("common.noData")}
+                        </div>
+                      ) : (
+                        leadActivities.map((activity) => (
+                          <div key={activity.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {getLeadActionLabel(activity.action)}
+                                </p>
+                                <p className="mt-1 text-sm text-slate-500 break-words">
+                                  {getActivityDescription(activity)}
+                                </p>
+                                {activity.route && (
+                                  <p className="mt-2 text-xs font-medium text-slate-400">
+                                    {activity.route}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                {formatLeadActivityDate(activity.created_at)}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </DialogContent>
           </Dialog>
           <Dialog

@@ -1,3 +1,13 @@
+import {
+  getCountries,
+  getCountryCallingCode,
+  isPossiblePhoneNumber,
+  isValidPhoneNumber,
+  parsePhoneNumber,
+  type Country,
+  type Value,
+} from "react-phone-number-input/input";
+
 const blockedNameValues = new Set([
   "test",
   "test test",
@@ -18,6 +28,40 @@ const blockedNameValues = new Set([
 ]);
 
 const allowedNamePattern = /^[\p{L}\p{M}'-]+(?: [\p{L}\p{M}'-]+)+$/u;
+const phoneCountries = getCountries();
+
+export type ClientPhoneCountry = Country;
+
+const getParsedNationalDigits = (value: string) =>
+  value.replace(/\D/g, "");
+
+const isLowEntropyNumber = (digits: string) =>
+  /^(\d)\1+$/.test(digits) ||
+  /^(\d{2})\1+$/.test(digits) ||
+  /^(\d{3})\1+$/.test(digits) ||
+  /^12345/.test(digits) ||
+  /^98765/.test(digits) ||
+  /^0000/.test(digits) ||
+  /^9999/.test(digits) ||
+  /^1111/.test(digits) ||
+  /^2222/.test(digits) ||
+  /^5555/.test(digits) ||
+  new Set(digits).size <= 2;
+
+const normalizeStoredPhone = (value?: string | null) => {
+  const trimmed = (value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("00")) {
+    return `+${trimmed.slice(2)}`;
+  }
+
+  return trimmed;
+};
+
+export const clientPhoneCountries = phoneCountries;
 
 export const sanitizeClientNameInput = (value: string) =>
   value
@@ -29,42 +73,53 @@ export const sanitizeClientNameInput = (value: string) =>
 export const normalizeClientName = (value: string) =>
   sanitizeClientNameInput(value).trim().replace(/\s+/g, " ");
 
-export const normalizeClientPhoneDigits = (value: string) => {
-  const digits = value.replace(/\D/g, "");
-
-  if (digits.length === 12 && digits.startsWith("90")) {
-    return digits.slice(2);
+export const getDefaultClientPhoneCountry = (value?: string | null): ClientPhoneCountry => {
+  const parsed = parseClientPhoneValue(value);
+  if (parsed?.country) {
+    return parsed.country;
   }
 
-  if (digits.length === 11 && digits.startsWith("0")) {
-    return digits.slice(1);
-  }
-
-  if (digits.length > 10) {
-    return digits.slice(-10);
-  }
-
-  return digits;
+  return "TR";
 };
 
-export const formatClientPhoneInput = (value: string) => {
-  const digits = normalizeClientPhoneDigits(value).slice(0, 10);
+export const parseClientPhoneValue = (value?: string | null) => {
+  const normalized = normalizeStoredPhone(value);
+  if (!normalized) {
+    return null;
+  }
 
-  if (!digits) {
+  try {
+    return parsePhoneNumber(normalized as Value);
+  } catch {
+    return null;
+  }
+};
+
+export const toStoredClientPhone = (value?: string | null) => {
+  const normalized = normalizeStoredPhone(value);
+  if (!normalized) {
     return "";
   }
 
-  const parts = ["+90"];
-  if (digits.length > 0) parts.push(digits.slice(0, 3));
-  if (digits.length > 3) parts.push(digits.slice(3, 6));
-  if (digits.length > 6) parts.push(digits.slice(6, 8));
-  if (digits.length > 8) parts.push(digits.slice(8, 10));
+  if (normalized.startsWith("+") && isPossiblePhoneNumber(normalized)) {
+    return normalized;
+  }
 
-  return parts.join(" ").trim();
+  return "";
 };
 
-export const toStoredClientPhone = (value: string) =>
-  formatClientPhoneInput(normalizeClientPhoneDigits(value));
+export const formatClientPhoneInput = (value?: string | null) => {
+  const parsed = parseClientPhoneValue(value);
+
+  if (parsed) {
+    return parsed.formatInternational();
+  }
+
+  return normalizeStoredPhone(value);
+};
+
+export const getClientCountryCallingCode = (country: ClientPhoneCountry) =>
+  `+${getCountryCallingCode(country)}`;
 
 export const validateClientName = (value: string) => {
   const normalized = normalizeClientName(value);
@@ -99,24 +154,36 @@ export const validateClientName = (value: string) => {
   return null;
 };
 
-export const validateClientPhone = (value: string) => {
-  const digits = normalizeClientPhoneDigits(value);
+export const validateClientPhone = (value: string, country?: ClientPhoneCountry | null) => {
+  const normalized = normalizeStoredPhone(value);
 
-  if (!digits) {
+  if (!normalized) {
     return "landing.phoneErrorRequired";
   }
 
-  if (!/^5\d{9}$/.test(digits)) {
+  if (!normalized.startsWith("+")) {
     return "landing.phoneErrorInvalid";
   }
 
-  if (
-    /^(\d)\1{9}$/.test(digits) ||
-    /^(\d{2})\1{4}$/.test(digits) ||
-    /^(\d{5})\1$/.test(digits) ||
-    new Set(digits).size <= 2
-  ) {
+  if (!isPossiblePhoneNumber(normalized) || !isValidPhoneNumber(normalized)) {
+    return "landing.phoneErrorInvalid";
+  }
+
+  const parsed = parseClientPhoneValue(normalized);
+  if (!parsed) {
+    return "landing.phoneErrorInvalid";
+  }
+
+  const nationalDigits = getParsedNationalDigits(parsed.nationalNumber || "");
+  if (nationalDigits.length < 6 || isLowEntropyNumber(nationalDigits)) {
     return "landing.phoneErrorFake";
+  }
+
+  const selectedCountry = country || parsed.country;
+  if (selectedCountry === "TR") {
+    if (parsed.country !== "TR" || !nationalDigits.startsWith("5") || nationalDigits.length !== 10) {
+      return "landing.phoneErrorTurkeyMobile";
+    }
   }
 
   return null;

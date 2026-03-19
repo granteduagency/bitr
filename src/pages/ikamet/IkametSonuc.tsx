@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/shared/SubmitButton";
 import { toast } from "@/hooks/use-toast";
 import { getOrCreateClient, supabase, uploadFile } from "@/lib/supabase";
 import { notifyAdminNewApplication } from "@/lib/admin-push";
+import { recordStoredClientActivity } from "@/lib/client-tracking";
 import {
   checkAppointmentStatus,
   formatPhoneForLookup,
@@ -104,6 +105,24 @@ export default function IkametSonuc() {
         setCheckType(suggested);
       }
 
+      void recordStoredClientActivity({
+        route: "/dashboard/ikamet/sonuc",
+        serviceKey: "ikamet",
+        action: "appointment_document_parsed",
+        details: {
+          source: extracted.source,
+          hasRegistrationNumber: Boolean(extracted.registrationNumber),
+          hasDocumentNumber: Boolean(extracted.documentNumber),
+          hasPhone: Boolean(extracted.phone),
+          hasEmail: Boolean(extracted.email),
+          warnings: extracted.warnings,
+        },
+        throttleKey: `appointment-parse:${file.name}:${file.size}`,
+        throttleMs: 10000,
+      }).catch((trackingError) => {
+        console.error("Appointment parse tracking error:", trackingError);
+      });
+
       toast({
         title: t("common.success"),
         description: t("ikamet.parseSuccess"),
@@ -176,6 +195,21 @@ export default function IkametSonuc() {
       });
 
       if (error) throw error;
+      await recordStoredClientActivity({
+        route: "/dashboard/ikamet/sonuc",
+        serviceKey: "ikamet",
+        action: "appointment_check_completed",
+        referenceId: applicationId,
+        details: {
+          success: checkResult.success,
+          status: checkResult.randevuStatus?.status ?? null,
+          checkType,
+          registrationNumber: form.registrationNumber.trim(),
+          documentNumber: form.documentNumber.trim().toUpperCase(),
+        },
+      }).catch((trackingError) => {
+        console.error("Appointment check tracking error:", trackingError);
+      });
       void notifyAdminNewApplication("ikamet", applicationId).catch((notifyError) => {
         console.error("Admin notify error:", notifyError);
       });

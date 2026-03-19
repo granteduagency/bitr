@@ -8,6 +8,7 @@ import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
+import { recordStoredClientApplication } from '@/lib/client-tracking';
 import {
   getPassportFatherName,
   getPassportGivenName,
@@ -71,6 +72,19 @@ export default function SigortaTurizm() {
         },
       });
       if (error) throw error;
+      await recordStoredClientApplication({
+        route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/sigorta/turizm',
+        serviceKey: 'sigorta',
+        referenceId: applicationId,
+        details: {
+          type: 'turizm',
+          sponsorType,
+          plan: form.plan,
+          nationality: form.nationality,
+        },
+      }).catch((trackingError) => {
+        console.error('Tourism insurance tracking error:', trackingError);
+      });
       void notifyAdminNewApplication('sigorta', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
