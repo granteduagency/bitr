@@ -9,10 +9,18 @@ import {
   type PassportExtractionData,
 } from "@/lib/docupipe";
 import type { Tables } from "@/integrations/supabase/types";
-import { supabase } from "@/lib/supabase";
+import { supabase, uploadFile } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FieldGroup, Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import {
@@ -51,6 +59,7 @@ import {
   Languages,
   Gavel,
   GraduationCap,
+  Settings,
   Eye,
   type LucideIcon,
 } from "lucide-react";
@@ -67,6 +76,12 @@ type ServiceField = {
   isDocuPipeOriginal?: boolean;
 };
 
+type DetailSectionConfig = {
+  key: string;
+  titleKey: string;
+  fields: string[];
+};
+
 const tableMap = {
   ikamet: "ikamet_applications",
   sigorta: "sigorta_applications",
@@ -77,8 +92,43 @@ const tableMap = {
   universite: "university_applications",
 } as const;
 
+const SERVICE_DETAIL_SECTIONS: Record<ServiceTab, DetailSectionConfig[]> = {
+  ikamet: [
+    { key: "overview", titleKey: "admin.sectionOverview", fields: ["category", "type", "created_at", "status"] },
+    { key: "family", titleKey: "admin.sectionFamily", fields: ["father_name", "mother_name"] },
+    { key: "contact", titleKey: "admin.sectionContact", fields: ["phone", "email", "address", "has_insurance", "supporter_type"] },
+    { key: "appointment", titleKey: "admin.sectionAppointment", fields: ["appointment_url", "appointment_result"] },
+    { key: "passport", titleKey: "admin.sectionPassport", fields: ["passport_url", "passport_document_id", "passport_extraction", "photo_url", "student_cert_url"] },
+    { key: "supporter", titleKey: "admin.sectionSupporter", fields: ["supporter_id_front_url", "supporter_id_back_url", "supporter_passport_url", "supporter_passport_document_id", "supporter_passport_extraction", "supporter_student_cert_url", "notes"] },
+  ],
+  visa: [
+    { key: "overview", titleKey: "admin.sectionOverview", fields: ["type", "phone", "created_at", "status"] },
+    { key: "travel", titleKey: "admin.sectionTravel", fields: ["from_country", "to_country", "travel_date"] },
+  ],
+  sigorta: [
+    { key: "overview", titleKey: "admin.sectionOverview", fields: ["type", "created_at", "status"] },
+    { key: "details", titleKey: "admin.sectionDetails", fields: ["data"] },
+  ],
+  tercume: [
+    { key: "overview", titleKey: "admin.sectionOverview", fields: ["document_types", "from_language", "to_language", "created_at", "status"] },
+    { key: "documents", titleKey: "admin.sectionDocuments", fields: ["documents_url", "passport_document_id", "passport_extraction"] },
+  ],
+  hukuk: [
+    { key: "case", titleKey: "admin.sectionCase", fields: ["full_name", "phone", "problem", "created_at", "status"] },
+  ],
+  calisma: [
+    { key: "overview", titleKey: "admin.sectionOverview", fields: ["type", "created_at", "status", "notes"] },
+    { key: "documents", titleKey: "admin.sectionDocuments", fields: ["documents_url"] },
+  ],
+  universite: [
+    { key: "overview", titleKey: "admin.sectionOverview", fields: ["external_university_name", "phone", "created_at", "status"] },
+    { key: "study", titleKey: "admin.sectionStudy", fields: ["degree", "faculty", "program", "language"] },
+    { key: "documents", titleKey: "admin.sectionDocuments", fields: ["passport_url", "passport_document_id", "passport_extraction", "diploma_url", "diploma_supplement_url", "photo_url"] },
+  ],
+};
+
 type ServiceTab = keyof typeof tableMap;
-type AdminTab = "dashboard" | "clients" | ServiceTab;
+type AdminTab = "dashboard" | "clients" | "settings" | ServiceTab;
 type ApplicationTableName = (typeof tableMap)[ServiceTab];
 type ClientRecord = Tables<"clients">;
 type ClientSummary = Pick<ClientRecord, "name" | "phone">;
@@ -117,6 +167,13 @@ export default function AdminPage() {
   const [data, setData] = useState<AdminApplicationRecord[]>([]);
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ url: string; label: string } | null>(null);
+  const [settingsForm, setSettingsForm] = useState({
+    fullName: "",
+    avatarUrl: "",
+  });
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -135,6 +192,24 @@ export default function AdminPage() {
     });
   }, []);
 
+  useEffect(() => {
+    if (!session) {
+      setSettingsForm({ fullName: "", avatarUrl: "" });
+      return;
+    }
+
+    setSettingsForm({
+      fullName:
+        (typeof session.user.user_metadata?.full_name === "string"
+          ? session.user.user_metadata.full_name
+          : "") || session.user.email?.split("@")[0] || "",
+      avatarUrl:
+        typeof session.user.user_metadata?.avatar_url === "string"
+          ? session.user.user_metadata.avatar_url
+          : "",
+    });
+  }, [session]);
+
   const login = async (e: React.FormEvent) => {
     e.preventDefault();
     const { error } = await supabase.auth.signInWithPassword({
@@ -152,6 +227,63 @@ export default function AdminPage() {
   const logout = async () => {
     await supabase.auth.signOut();
     setSession(null);
+  };
+
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setAvatarUploading(true);
+      const uploadedUrl = await uploadFile(file, "documents");
+      if (!uploadedUrl) {
+        throw new Error("Avatar upload failed.");
+      }
+
+      setSettingsForm((prev) => ({ ...prev, avatarUrl: uploadedUrl }));
+      toast({ title: t("common.success") });
+    } catch (error) {
+      toast({
+        title: t("common.error"),
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setAvatarUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  const saveSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    try {
+      setSettingsSaving(true);
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          full_name: settingsForm.fullName.trim(),
+          avatar_url: settingsForm.avatarUrl.trim(),
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const {
+        data: { session: refreshedSession },
+      } = await supabase.auth.getSession();
+      setSession(refreshedSession);
+      toast({ title: t("common.success") });
+    } catch (error) {
+      toast({
+        title: t("common.error"),
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSettingsSaving(false);
+    }
   };
 
   // Per-service field definitions: key = DB column, labelKey = translation key
@@ -331,6 +463,29 @@ export default function AdminPage() {
       { key: "father_name", label: t("form.fatherName"), value: getPassportFatherName(extraction) },
     ].filter((field) => field.value);
   };
+  const getAdminDisplayName = (currentSession: Session | null) =>
+    (typeof currentSession?.user?.user_metadata?.full_name === "string"
+      ? currentSession.user.user_metadata.full_name.trim()
+      : "") || currentSession?.user?.email?.split("@")[0] || "Admin";
+  const getAdminAvatarUrl = (currentSession: Session | null) =>
+    (typeof currentSession?.user?.user_metadata?.avatar_url === "string"
+      ? currentSession.user.user_metadata.avatar_url.trim()
+      : "") || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentSession?.user?.email || "Admin"}`;
+  const getAdminInitials = (currentSession: Session | null) =>
+    getAdminDisplayName(currentSession)
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((chunk) => chunk[0]?.toUpperCase() || "")
+      .join("") || "A";
+  const getServiceLabel = (service: ServiceTab) =>
+    service === "visa" ? t("services.viza") : t(`services.${service}`);
+  const getTabLabel = (value: AdminTab) => {
+    if (value === "dashboard") return t("admin.dashboard");
+    if (value === "clients") return t("admin.clients");
+    if (value === "settings") return t("admin.settings");
+    return getServiceLabel(value);
+  };
 
   const fetchData = async (serviceTab: ServiceTab) => {
     const table = tableMap[serviceTab];
@@ -465,6 +620,8 @@ export default function AdminPage() {
 
   const isFileUrl = (value: unknown): value is string =>
     typeof value === "string" && /^https?:\/\//.test(value);
+  const isImageUrl = (value: string) =>
+    /\.(png|jpe?g|gif|webp|bmp|svg|avif)(?:$|[?#])/i.test(value);
 
   const isDocumentIdKey = (key: string) => key.endsWith("_document_id");
 
@@ -530,20 +687,72 @@ export default function AdminPage() {
     return String(value);
   };
 
-  const renderDetailRow = (rowKey: string, label: string, content: JSX.Element) => (
-    <div key={rowKey} className="flex items-start px-6 py-4 hover:bg-slate-50/60 transition-colors">
-      <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide w-44 shrink-0 pt-0.5">
+  const isWideDetailKey = (key: string, rootKey = key, value?: unknown) => {
+    if (["address", "notes", "problem", "error", "raw", "response"].includes(key)) {
+      return true;
+    }
+
+    if (rootKey === "appointment_result" || rootKey === "data") {
+      return key === "debugTrace" || key === "warnings" || key === "parsedData" || key === "randevuStatus";
+    }
+
+    return typeof value === "string" && value.length > 120;
+  };
+
+  const renderDetailCard = (
+    rowKey: string,
+    label: string,
+    content: JSX.Element,
+    fullWidth = false,
+  ) => (
+    <div
+      key={rowKey}
+      className={cn(
+        "rounded-2xl border border-slate-200 bg-white p-4 shadow-sm min-w-0",
+        fullWidth && "md:col-span-2",
+      )}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
         {label}
-      </span>
-      <div className="flex-1 min-w-0">{content}</div>
+      </p>
+      <div className="mt-2 min-w-0">{content}</div>
     </div>
   );
+
+  const renderFileAction = (url: string, label: string) => {
+    if (isImageUrl(url)) {
+      return (
+        <button
+          type="button"
+          onClick={() => setImagePreview({ url, label })}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700"
+        >
+          <Eye className="w-3.5 h-3.5" /> {t("admin.viewImage")}
+        </button>
+      );
+    }
+
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700"
+      >
+        <Eye className="w-3.5 h-3.5" /> {t("admin.viewFile")}
+      </a>
+    );
+  };
 
   const openOriginalDocument = async (documentId: string) => {
     try {
       setOpeningDocumentId(documentId);
       const url = await getDocuPipeOriginalUrl(documentId);
-      window.open(url, "_blank", "noopener,noreferrer");
+      if (isImageUrl(url)) {
+        setImagePreview({ url, label: t("admin.viewOriginal") });
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
     } catch (error) {
       toast({
         title: t("common.error"),
@@ -577,17 +786,10 @@ export default function AdminPage() {
       if (items.every((item) => typeof item !== "object")) {
         if (items.every((item) => isFileUrl(item))) {
           return items.map((item, index) =>
-            renderDetailRow(
+            renderDetailCard(
               `${key}-${index}`,
               items.length > 1 ? `${label} ${index + 1}` : label,
-              <a
-                href={String(item)}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700"
-              >
-                <Eye className="w-3.5 h-3.5" /> {t("admin.viewFile")}
-              </a>,
+              renderFileAction(String(item), items.length > 1 ? `${label} ${index + 1}` : label),
             ),
           );
         }
@@ -602,10 +804,11 @@ export default function AdminPage() {
           : items.map((item) => formatValue(key, item)).join(", ");
 
         return [
-          renderDetailRow(
+          renderDetailCard(
             key,
             label,
             <span className="text-sm font-semibold text-slate-800 break-words">{joined}</span>,
+            isWideDetailKey(key, rootKey, joined),
           ),
         ];
       }
@@ -633,7 +836,7 @@ export default function AdminPage() {
 
     if (isDocumentIdKey(key) && typeof value === "string") {
       return [
-        renderDetailRow(
+        renderDetailCard(
           key,
           label,
           <button
@@ -651,33 +854,120 @@ export default function AdminPage() {
 
     if (isFileUrl(value)) {
       return [
-        renderDetailRow(
+        renderDetailCard(
           key,
           label,
-          <a
-            href={value}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700"
-          >
-            <Eye className="w-3.5 h-3.5" /> {t("admin.viewFile")}
-          </a>,
+          renderFileAction(value, label),
         ),
       ];
     }
 
     return [
-      renderDetailRow(
+      renderDetailCard(
         key,
         label,
         <span className="text-sm font-semibold text-slate-800 break-words">
           {formatValue(key, value)}
         </span>,
+        isWideDetailKey(key, rootKey, value),
       ),
     ];
   }
 
   const selectedPassportIdentity = getPassportIdentitySummary(selectedApp);
+  const selectedServiceSections =
+    selectedApp && isServiceTab(tab)
+      ? (() => {
+          const fieldMap = new Map(SERVICE_FIELDS[tab].map((field) => [field.key, field]));
+          const consumed = new Set<string>();
+          const sections = SERVICE_DETAIL_SECTIONS[tab]
+            .map((section) => {
+              const cards = section.fields.flatMap((fieldKey) => {
+                const field = fieldMap.get(fieldKey);
+                if (!field) {
+                  return [];
+                }
+
+                consumed.add(fieldKey);
+                return renderServiceField(selectedApp, field);
+              });
+
+              if (cards.length === 0) {
+                return null;
+              }
+
+              return (
+                <section key={section.key} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                      {t(section.titleKey)}
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {cards}
+                  </div>
+                </section>
+              );
+            })
+            .filter(Boolean);
+
+          const remainingCards = SERVICE_FIELDS[tab]
+            .filter((field) => !consumed.has(field.key))
+            .flatMap((field) => renderServiceField(selectedApp, field));
+
+          if (remainingCards.length > 0) {
+            sections.push(
+              <section key="remaining" className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                    {t("admin.details")}
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {remainingCards}
+                </div>
+              </section>,
+            );
+          }
+
+          return sections;
+        })()
+      : [];
+  function renderServiceField(
+    item: AdminApplicationRecord,
+    field: ServiceField,
+  ): JSX.Element[] {
+    const value = item[field.key as keyof AdminApplicationRecord];
+    if (value === null || value === undefined || value === "") {
+      return [];
+    }
+
+    const label = getLabelForKey(field.key, field.labelKey);
+
+    if (field.isJson) {
+      return renderStructuredValue(
+        value,
+        field.key,
+        field.key === "data" ? undefined : label,
+        field.key,
+      );
+    }
+
+    if (field.isFile || field.isDocuPipeOriginal) {
+      return renderStructuredValue(value, field.key, label, field.key);
+    }
+
+    return [
+      renderDetailCard(
+        field.key,
+        label,
+        <span className="text-sm font-semibold text-slate-800 break-words">
+          {formatValue(field.key, value, field.isDate)}
+        </span>,
+        isWideDetailKey(field.key, field.key, value),
+      ),
+    ];
+  }
 
   if (loading)
     return (
@@ -808,6 +1098,7 @@ export default function AdminPage() {
     { key: "tercume", label: t("services.tercume"), icon: Languages },
     { key: "hukuk", label: t("services.hukuk"), icon: Gavel },
     { key: "universite", label: t("services.universite"), icon: GraduationCap },
+    { key: "settings", label: t("admin.settings"), icon: Settings },
   ];
 
   const statCardsData = [
@@ -826,11 +1117,8 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-[#dcdad2] flex p-3">
       {/* Sidebar */}
-      <aside className="w-[88px] bg-[#dcdad2] flex flex-col items-center py-6 gap-6 relative z-10 hidden lg:flex">
-        <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-black/5 flex items-center justify-center mb-2 overflow-hidden">
-          <img src="/logo.jpg" alt="Logo" className="w-full h-full object-cover" />
-        </div>
-        <nav className="flex-1 flex flex-col gap-4">
+      <aside className="w-[88px] bg-[#dcdad2] flex flex-col items-center py-8 relative z-10 hidden lg:flex overflow-hidden">
+        <nav className="flex flex-col gap-3">
           {tabs.map((tb) => {
             const Icon = tb.icon || FileText;
             const isActive = tab === tb.key;
@@ -851,9 +1139,6 @@ export default function AdminPage() {
             );
           })}
         </nav>
-        <button onClick={logout} className="w-11 h-11 flex items-center justify-center rounded-full text-slate-600 hover:bg-black/10 transition-colors">
-          <LogOut className="w-5 h-5" />
-        </button>
       </aside>
 
       {/* Main Content */}
@@ -866,29 +1151,43 @@ export default function AdminPage() {
           </div>
           <div className="flex items-center gap-6">
             <LanguageSwitcher />
-            <div className="flex items-center gap-4 text-slate-600 border-l border-slate-200 pl-6 cursor-pointer hover:opacity-80 transition-opacity">
+            <div className="flex items-center gap-4 text-slate-600 border-l border-slate-200 pl-6">
               <button className="relative text-slate-500 hover:text-black transition-colors">
                 <Bell className="w-5 h-5" />
                 <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-[#ff6844] rounded-full border-2 border-white"></span>
               </button>
-              <div className="flex items-center gap-2 ml-2">
-                <div className="flex flex-col items-end">
-                  <span className="text-sm font-bold text-slate-800 leading-none">
-                    {session?.user?.email?.split('@')[0] || "Admin"}
-                  </span>
-                  <span className="text-[10px] font-semibold text-slate-400 mt-1 uppercase tracking-wider">
-                    {t("admin.panel")}
-                  </span>
-                </div>
-                <div className="w-9 h-9 rounded-full bg-slate-200 overflow-hidden ml-1 border-2 border-white shadow-sm">
-                  <img 
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${session?.user?.email || 'Admin'}`} 
-                    alt="Avatar" 
-                    className="w-full h-full object-cover" 
-                  />
-                </div>
-                <ChevronDown className="w-4 h-4 text-slate-400" />
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-2 ml-2 rounded-full px-2 py-1 hover:bg-slate-100 transition-colors">
+                    <div className="flex flex-col items-end">
+                      <span className="text-sm font-bold text-slate-800 leading-none">
+                        {getAdminDisplayName(session)}
+                      </span>
+                      <span className="text-[10px] font-semibold text-slate-400 mt-1 uppercase tracking-wider">
+                        {t("admin.panel")}
+                      </span>
+                    </div>
+                    <Avatar className="w-9 h-9 ml-1 border-2 border-white shadow-sm bg-slate-200">
+                      <AvatarImage src={getAdminAvatarUrl(session)} alt="Avatar" className="object-cover" />
+                      <AvatarFallback className="bg-slate-200 text-slate-700 text-xs font-bold">
+                        {getAdminInitials(session)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="rounded-2xl bg-white p-2 border-slate-100 shadow-xl min-w-[180px]">
+                  <DropdownMenuItem className="rounded-xl font-medium" onSelect={() => setTab("settings")}>
+                    <Settings className="w-4 h-4 mr-2" />
+                    {t("admin.settings")}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="rounded-xl font-medium text-red-500 focus:text-red-500" onSelect={logout}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    {t("auth.logout")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </header>
@@ -897,8 +1196,14 @@ export default function AdminPage() {
         <main className="flex-1 overflow-y-auto px-8 pb-8">
           <div className="flex items-center justify-between mb-8 mt-2">
             <div className="flex items-center gap-3 text-slate-900">
-              <Grip className="w-6 h-6 text-slate-800" />
-              <h2 className="text-[26px] font-extrabold tracking-tight font-heading capitalize">{tab}</h2>
+              {(() => {
+                const activeTab = tabs.find((item) => item.key === tab);
+                const ActiveIcon = activeTab?.icon || Grip;
+                return <ActiveIcon className="w-6 h-6 text-slate-800" />;
+              })()}
+              <h2 className="text-[26px] font-extrabold tracking-tight font-heading">
+                {getTabLabel(tab)}
+              </h2>
             </div>
             {tab === "dashboard" && (
               <div className="flex items-center gap-4 text-sm font-semibold text-slate-500">
@@ -934,7 +1239,7 @@ export default function AdminPage() {
                     )}
                     {!s.isEmpty && (
                       <>
-                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center mt-3 shadow-sm border border-black/5">
+                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center mt-6 shadow-sm border border-black/5">
                           <s.icon className="w-4 h-4 text-slate-700" />
                         </div>
                         <h3 className="text-2xl font-black text-slate-800 tracking-tight mt-2 font-heading">{s.value}</h3>
@@ -1034,12 +1339,79 @@ export default function AdminPage() {
             </motion.div>
           )}
 
+          {tab === "settings" && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl">
+              <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                <div className="px-8 pt-8 pb-5 border-b border-slate-100">
+                  <h3 className="text-xl font-bold text-slate-900 font-heading">{t("admin.settings")}</h3>
+                  <p className="text-slate-400 text-sm mt-1">{session?.user?.email || ""}</p>
+                </div>
+                <form onSubmit={saveSettings} className="p-8 space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] gap-8 items-start">
+                    <div className="space-y-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("admin.profilePhoto")}
+                      </p>
+                      <Avatar className="w-40 h-40 rounded-[2rem] border border-slate-200 shadow-sm bg-slate-100">
+                        <AvatarImage src={settingsForm.avatarUrl || getAdminAvatarUrl(session)} alt="Avatar" className="object-cover" />
+                        <AvatarFallback className="bg-slate-100 text-slate-700 text-3xl font-bold">
+                          {getAdminInitials(session)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <label className="inline-flex items-center justify-center h-11 px-5 rounded-full bg-black text-white hover:bg-black/90 text-sm font-semibold cursor-pointer transition-colors">
+                        {avatarUploading ? t("common.loading") : t("common.upload")}
+                        <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} disabled={avatarUploading} />
+                      </label>
+                    </div>
+
+                    <div className="space-y-5">
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          {t("form.fullName")}
+                        </label>
+                        <Input
+                          value={settingsForm.fullName}
+                          onChange={(event) => setSettingsForm((prev) => ({ ...prev, fullName: event.target.value }))}
+                          className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                          placeholder={t("form.fullName")}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          {t("auth.email")}
+                        </label>
+                        <Input value={session?.user?.email || ""} disabled className="h-12 rounded-2xl border-slate-200 bg-slate-100 text-slate-500" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          {t("admin.profileImageUrl")}
+                        </label>
+                        <Input
+                          value={settingsForm.avatarUrl}
+                          onChange={(event) => setSettingsForm((prev) => ({ ...prev, avatarUrl: event.target.value }))}
+                          className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                          placeholder="https://..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button type="submit" className="h-11 px-6 rounded-full bg-black text-white hover:bg-black/90 font-semibold" disabled={settingsSaving || avatarUploading}>
+                      {settingsSaving ? t("common.loading") : t("common.save")}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          )}
+
           {/* Other Tabs Rendering... */}
-          {tab !== "dashboard" && (
+          {tab !== "dashboard" && tab !== "settings" && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                <div className="px-8 pt-7 pb-4 border-b border-slate-50">
                  <h3 className="text-xl font-bold text-slate-900 font-heading">
-                    {t(`services.${tab}`) || tab}
+                    {getTabLabel(tab)}
                  </h3>
                  <p className="text-slate-400 text-sm mt-0.5">{data.length > 0 ? `${data.length} ${t('admin.totalApplications')}` : ''}</p>
                </div>
@@ -1096,7 +1468,7 @@ export default function AdminPage() {
               <div className="px-6 py-5 border-b border-slate-100 shrink-0">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900 leading-none">{t(`services.${tab}`) || t("admin.detail")}</h2>
+                    <h2 className="text-lg font-bold text-slate-900 leading-none">{getTabLabel(tab)}</h2>
                     <p className="text-sm text-slate-500 mt-1 font-medium">
                       {getClientName(selectedApp)} · {getClientPhone(selectedApp)}
                     </p>
@@ -1126,34 +1498,8 @@ export default function AdminPage() {
 
               {/* Body */}
               <div className="flex-1 overflow-y-auto">
-                <div className="divide-y divide-slate-50">
-                  {selectedApp && isServiceTab(tab) && SERVICE_FIELDS[tab].map((field) => {
-                    const v = selectedApp[field.key as keyof AdminApplicationRecord];
-                    if (v === null || v === undefined || v === '') return null;
-
-                    const label = getLabelForKey(field.key, field.labelKey);
-
-                    if (field.isJson) {
-                      return renderStructuredValue(
-                        v,
-                        field.key,
-                        field.key === 'data' ? undefined : label,
-                        field.key,
-                      );
-                    }
-
-                    if (field.isFile || field.isDocuPipeOriginal) {
-                      return renderStructuredValue(v, field.key, label);
-                    }
-
-                    return renderDetailRow(
-                      field.key,
-                      label,
-                      <span className="text-sm font-semibold text-slate-800 break-words">
-                        {formatValue(field.key, v, field.isDate)}
-                      </span>,
-                    );
-                  })}
+                <div className="space-y-6 px-6 py-6 bg-slate-50/50">
+                  {selectedServiceSections}
                 </div>
 
                 {/* Change Status */}
@@ -1176,6 +1522,27 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={!!imagePreview} onOpenChange={(open) => !open && setImagePreview(null)}>
+            <DialogContent className="max-w-4xl bg-white p-4 rounded-2xl border border-slate-200 shadow-2xl">
+              {imagePreview && (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{imagePreview.label}</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400 mt-1">
+                      {t("admin.imagePreview")}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-slate-100 p-3 flex items-center justify-center max-h-[78vh] overflow-auto">
+                    <img
+                      src={imagePreview.url}
+                      alt={imagePreview.label}
+                      className="max-h-[72vh] w-auto max-w-full object-contain rounded-xl"
+                    />
+                  </div>
+                </div>
+              )}
             </DialogContent>
           </Dialog>
         </main>
