@@ -82,7 +82,9 @@ export default function IkametForm({ category, type }: IkametFormProps) {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      const { data: application, error } = await supabase.from('ikamet_applications').insert({
+      const applicationId = crypto.randomUUID();
+      const { error } = await supabase.from('ikamet_applications').insert({
+        id: applicationId,
         client_id: cId,
         category,
         type,
@@ -94,9 +96,9 @@ export default function IkametForm({ category, type }: IkametFormProps) {
         supporter_passport_url: supporterType === 'yabanci' ? form.supporter_passport_url : '',
         has_insurance: form.has_insurance === 'yes',
         supporter_type: type === 'aile' ? supporterType : null,
-      }).select('id').single();
+      });
       if (error) throw error;
-      void notifyAdminNewApplication('ikamet', application.id).catch((notifyError) => {
+      void notifyAdminNewApplication('ikamet', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });

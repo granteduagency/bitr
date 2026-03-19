@@ -163,7 +163,9 @@ export default function IkametSonuc() {
         localStorage.getItem("client_phone")!,
       );
 
-      const { data: application, error } = await supabase.from("ikamet_applications").insert({
+      const applicationId = crypto.randomUUID();
+      const { error } = await supabase.from("ikamet_applications").insert({
+        id: applicationId,
         client_id: clientId,
         category: "sonuc",
         type: "sonuc",
@@ -171,10 +173,10 @@ export default function IkametSonuc() {
         phone: finalParsedData.phone,
         email: finalParsedData.email,
         appointment_result: checkResult,
-      }).select("id").single();
+      });
 
       if (error) throw error;
-      void notifyAdminNewApplication("ikamet", application.id).catch((notifyError) => {
+      void notifyAdminNewApplication("ikamet", applicationId).catch((notifyError) => {
         console.error("Admin notify error:", notifyError);
       });
 

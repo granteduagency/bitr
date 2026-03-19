@@ -26,13 +26,12 @@ export default function HukukPage() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(form.full_name, form.phone);
-      const { data: application, error } = await supabase
+      const applicationId = crypto.randomUUID();
+      const { error } = await supabase
         .from('hukuk_applications')
-        .insert({ client_id: cId, ...form })
-        .select('id')
-        .single();
+        .insert({ id: applicationId, client_id: cId, ...form });
       if (error) throw error;
-      void notifyAdminNewApplication('hukuk', application.id).catch((notifyError) => {
+      void notifyAdminNewApplication('hukuk', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });

@@ -17,26 +17,18 @@ export async function uploadFile(file: File, bucket: string = 'documents'): Prom
 }
 
 export async function getOrCreateClient(name: string, phone: string): Promise<string | null> {
-  // Try to find existing client
-  const { data: existing } = await supabase
-    .from('clients')
-    .select('id')
-    .eq('phone', phone)
-    .maybeSingle();
+  const normalizedName = name.trim();
+  const normalizedPhone = phone.trim();
 
-  if (existing) return existing.id;
-
-  // Create new client
-  const { data, error } = await supabase
-    .from('clients')
-    .insert({ name, phone })
-    .select('id')
-    .single();
+  const { data, error } = await supabase.rpc('get_or_create_client', {
+    _name: normalizedName,
+    _phone: normalizedPhone,
+  });
 
   if (error) {
     console.error('Client creation error:', error);
     return null;
   }
 
-  return data.id;
+  return typeof data === 'string' ? data : null;
 }

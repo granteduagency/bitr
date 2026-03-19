@@ -46,15 +46,17 @@ export default function TercumePage() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      const { data: application, error } = await supabase.from('tercume_applications').insert({
+      const applicationId = crypto.randomUUID();
+      const { error } = await supabase.from('tercume_applications').insert({
+        id: applicationId,
         client_id: cId, document_types: selectedDocs, from_language: fromLang,
         to_language: toLang,
         documents_url: selectedDocs.map((key) => docUrls[key]).filter(Boolean),
         passport_document_id: selectedDocs.includes('passport') ? passportMeta?.documentId ?? null : null,
         passport_extraction: selectedDocs.includes('passport') ? passportMeta?.extraction ?? null : null,
-      }).select('id').single();
+      });
       if (error) throw error;
-      void notifyAdminNewApplication('tercume', application.id).catch((notifyError) => {
+      void notifyAdminNewApplication('tercume', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });

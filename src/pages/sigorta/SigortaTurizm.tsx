@@ -58,7 +58,9 @@ export default function SigortaTurizm() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      const { data: application, error } = await supabase.from('sigorta_applications').insert({
+      const applicationId = crypto.randomUUID();
+      const { error } = await supabase.from('sigorta_applications').insert({
+        id: applicationId,
         client_id: cId,
         type: 'turizm',
         data: {
@@ -67,9 +69,9 @@ export default function SigortaTurizm() {
           passport_document_id: passportMeta?.documentId ?? null,
           passport_extraction: passportMeta?.extraction ?? null,
         },
-      }).select('id').single();
+      });
       if (error) throw error;
-      void notifyAdminNewApplication('sigorta', application.id).catch((notifyError) => {
+      void notifyAdminNewApplication('sigorta', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });

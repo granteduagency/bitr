@@ -39,13 +39,12 @@ export default function SigortaSeyahat() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      const { data: application, error } = await supabase
+      const applicationId = crypto.randomUUID();
+      const { error } = await supabase
         .from('sigorta_applications')
-        .insert({ client_id: cId, type: 'seyahat', data: { ...form, idType } })
-        .select('id')
-        .single();
+        .insert({ id: applicationId, client_id: cId, type: 'seyahat', data: { ...form, idType } });
       if (error) throw error;
-      void notifyAdminNewApplication('sigorta', application.id).catch((notifyError) => {
+      void notifyAdminNewApplication('sigorta', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });

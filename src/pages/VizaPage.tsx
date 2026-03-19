@@ -45,13 +45,12 @@ export default function VizaPage() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      const { data: application, error } = await supabase
+      const applicationId = crypto.randomUUID();
+      const { error } = await supabase
         .from('visa_applications')
-        .insert({ client_id: cId, type: selectedType!, ...form })
-        .select('id')
-        .single();
+        .insert({ id: applicationId, client_id: cId, type: selectedType!, ...form });
       if (error) throw error;
-      void notifyAdminNewApplication('visa', application.id).catch((notifyError) => {
+      void notifyAdminNewApplication('visa', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });

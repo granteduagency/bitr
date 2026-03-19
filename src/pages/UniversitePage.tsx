@@ -185,7 +185,9 @@ export default function UniversitePage() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      const { data: application, error } = await supabase.from('university_applications').insert({
+      const applicationId = crypto.randomUUID();
+      const { error } = await supabase.from('university_applications').insert({
+        id: applicationId,
         client_id: cId,
         university_id: null,
         external_workspace_id: selectedUni?.workspaceId ?? null,
@@ -201,9 +203,9 @@ export default function UniversitePage() {
         passport_document_id: passportMeta?.documentId ?? null,
         passport_extraction: passportMeta?.extraction ?? null,
         ...form,
-      }).select('id').single();
+      });
       if (error) throw error;
-      void notifyAdminNewApplication('universite', application.id).catch((notifyError) => {
+      void notifyAdminNewApplication('universite', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });

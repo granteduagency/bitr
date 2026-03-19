@@ -27,13 +27,15 @@ export default function CalismaForm() {
       const clientName = localStorage.getItem('client_name') || '';
       const clientPhone = localStorage.getItem('client_phone') || '';
       const clientId = await getOrCreateClient(clientName, clientPhone);
-      const { data: application, error } = await supabase.from('calisma_applications').insert({
+      const applicationId = crypto.randomUUID();
+      const { error } = await supabase.from('calisma_applications').insert({
+        id: applicationId,
         client_id: clientId,
         type: type === 'yurt-ici' ? 'yurt_ici' : 'yurt_disi',
         documents_url: docs, notes,
-      }).select('id').single();
+      });
       if (error) throw error;
-      void notifyAdminNewApplication('calisma', application.id).catch((notifyError) => {
+      void notifyAdminNewApplication('calisma', applicationId).catch((notifyError) => {
         console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });
