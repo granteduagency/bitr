@@ -240,13 +240,16 @@ export default function AdminPage() {
     ],
   };
 
-  const getClientName = (item: AdminApplicationRecord | null | undefined) =>
-    item?.clients?.name || item?.client?.name || "—";
-  const getClientPhone = (item: AdminApplicationRecord | null | undefined) =>
-    item?.clients?.phone || item?.client?.phone || "—";
   const isJsonObject = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
   const shouldHideStructuredKey = (key: string) => key.toLowerCase() === "mrz";
+  const readText = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : "";
+  const getApplicationPayload = (item: AdminApplicationRecord | null | undefined) => {
+    if (!item) return null;
+    const record = item as unknown as Record<string, unknown>;
+    return isJsonObject(record.data) ? record.data : null;
+  };
   const getPrimaryPassportExtraction = (
     item: AdminApplicationRecord | null | undefined,
   ): PassportExtractionData | null => {
@@ -264,6 +267,46 @@ export default function AdminPage() {
     }
 
     return toPassportExtractionData(dataPayload.passport_extraction);
+  };
+  const getClientName = (item: AdminApplicationRecord | null | undefined) => {
+    const relatedName = item?.clients?.name || item?.client?.name;
+    if (relatedName?.trim()) {
+      return relatedName;
+    }
+
+    const extraction = getPrimaryPassportExtraction(item);
+    const passportName = [getPassportGivenName(extraction), getPassportSurname(extraction)]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (passportName) {
+      return passportName;
+    }
+
+    const record = item as unknown as Record<string, unknown> | null;
+    const dataPayload = getApplicationPayload(item);
+    const payloadName = [readText(dataPayload?.name), readText(dataPayload?.surname)]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    return (
+      readText(record?.full_name) ||
+      readText(dataPayload?.full_name) ||
+      payloadName ||
+      "—"
+    );
+  };
+  const getClientPhone = (item: AdminApplicationRecord | null | undefined) => {
+    const relatedPhone = item?.clients?.phone || item?.client?.phone;
+    if (relatedPhone?.trim()) {
+      return relatedPhone;
+    }
+
+    const record = item as unknown as Record<string, unknown> | null;
+    const dataPayload = getApplicationPayload(item);
+
+    return readText(record?.phone) || readText(dataPayload?.phone) || "—";
   };
   const getPassportIdentitySummary = (item: AdminApplicationRecord | null | undefined) => {
     const extraction = getPrimaryPassportExtraction(item);
