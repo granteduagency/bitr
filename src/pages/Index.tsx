@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Form, Input, Button } from "@heroui/react";
+import { Form, Button } from "@heroui/react";
 import { ClientPhoneField } from "@/components/shared/ClientPhoneField";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import { InstallAppButton } from "@/components/shared/InstallAppButton";
+import { Input } from "@/components/ui/input";
 import {
   getDefaultClientPhoneCountry,
   normalizeClientName,
@@ -621,14 +622,17 @@ const Index = () => {
                     required
                     name="name"
                     value={form.name}
-                    onValueChange={(value) =>
-                      setForm((prev) => ({ ...prev, name: sanitizeClientNameInput(value) }))
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        name: sanitizeClientNameInput(event.target.value),
+                      }))
                     }
                     onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
                     placeholder={t("landing.namePlaceholder")}
                     autoComplete="name"
                     maxLength={60}
-                    className={`w-full h-14 bg-white/50 hover:bg-white focus-within:bg-white border-2 rounded-[0.85rem] shadow-none [&_input]:text-[15px] [&_input]:font-medium [&_input]:placeholder:text-slate-500 ${touched.name && nameError ? "border-red-500 focus-within:border-red-500" : "border-black focus-within:border-black"}`}
+                    className={`w-full h-14 bg-white/50 hover:bg-white focus:bg-white border-2 rounded-[0.85rem] px-4 text-[15px] font-medium text-slate-900 placeholder:text-slate-500 shadow-none focus-visible:ring-0 ${touched.name && nameError ? "border-red-500 focus-visible:border-red-500" : "border-black focus-visible:border-black"}`}
                   />
                   <div className="mt-[-6px] min-h-[20px] px-1">
                     {touched.name && nameError ? (
