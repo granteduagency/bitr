@@ -43,7 +43,6 @@ type AppointmentCheckResult = {
   checkedAt: string;
   parsedData: ParsedAppointmentData;
   randevuStatus: AppointmentCheckStatus | null;
-  debugTrace: AppointmentDebugStep[];
 };
 
 type AppointmentDebugStep = {
@@ -57,10 +56,6 @@ type AppointmentDebugStep = {
 };
 
 type AppointmentStreamEvent =
-  | {
-      type: "step";
-      step: AppointmentDebugStep;
-    }
   | {
       type: "result";
       result: AppointmentCheckResult;
@@ -140,75 +135,22 @@ const decodeBase64 = (base64: string) =>
 
 const digitsOnly = (value: string) => value.replace(/\D/g, "");
 
-const safeJsonValue = (value: unknown): unknown => {
-  if (value === undefined) {
-    return null;
-  }
-
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-
-  if (value instanceof Error) {
-    return {
-      name: value.name,
-      message: value.message,
-      stack: value.stack || null,
-    };
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((item) => safeJsonValue(item));
-  }
-
-  if (typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, safeJsonValue(item)]),
-    );
-  }
-
-  return String(value);
-};
-
 const previewHtml = (html: string, maxLength = 800) =>
   html
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength);
 
-const createStepRecorder = (emit?: (event: AppointmentStreamEvent) => void) => {
-  const steps: AppointmentDebugStep[] = [];
-  let sequence = 0;
-
-  const log = (input: {
+const createStepRecorder = () => {
+  const log = (_input: {
     attempt?: number;
     stage: string;
     level: AppointmentDebugStep["level"];
     message: string;
     data?: Record<string, unknown> | null;
-  }) => {
-    sequence += 1;
+  }) => undefined;
 
-    const step: AppointmentDebugStep = {
-      sequence,
-      timestamp: new Date().toISOString(),
-      attempt: input.attempt ?? 0,
-      stage: input.stage,
-      level: input.level,
-      message: input.message,
-      data: (safeJsonValue(input.data || null) as Record<string, unknown> | null) ?? null,
-    };
-
-    steps.push(step);
-    console.log(`[randevu-check] ${JSON.stringify(step)}`);
-    emit?.({
-      type: "step",
-      step,
-    });
-    return step;
-  };
-
-  return { steps, log };
+  return { log };
 };
 
 const normalizePhoneDigits = (value: string) => {
@@ -1017,8 +959,8 @@ async function checkAppointmentStatus(payload: {
   phone?: string | null;
   email?: string | null;
   parsedData?: ParsedAppointmentData;
-}, emit?: (event: AppointmentStreamEvent) => void) {
-  const recorder = createStepRecorder(emit);
+}) {
+  const recorder = createStepRecorder();
   const log = recorder.log;
   const registrationNumber = normalizeString(payload.registrationNumber);
   const documentNumber = normalizeString(payload.documentNumber).toUpperCase();
@@ -1078,11 +1020,7 @@ async function checkAppointmentStatus(payload: {
       },
     });
 
-    const cachedResult = {
-      ...cached.value,
-      debugTrace: [...cached.value.debugTrace, ...recorder.steps],
-    };
-    return cachedResult;
+    return cached.value;
   }
 
   let attempt = 0;
@@ -1161,7 +1099,6 @@ async function checkAppointmentStatus(payload: {
           checkedAt: new Date().toISOString(),
           parsedData,
           randevuStatus: null,
-          debugTrace: recorder.steps,
         };
 
         log({
@@ -1192,7 +1129,6 @@ async function checkAppointmentStatus(payload: {
         checkedAt: new Date().toISOString(),
         parsedData,
         randevuStatus: status,
-        debugTrace: recorder.steps,
       };
 
       log({
@@ -1236,7 +1172,6 @@ async function checkAppointmentStatus(payload: {
           checkedAt: new Date().toISOString(),
           parsedData,
           randevuStatus: null,
-          debugTrace: recorder.steps,
         } satisfies AppointmentCheckResult;
       }
 
@@ -1263,7 +1198,6 @@ async function checkAppointmentStatus(payload: {
     checkedAt: new Date().toISOString(),
     parsedData,
     randevuStatus: null,
-    debugTrace: recorder.steps,
   } satisfies AppointmentCheckResult;
 }
 
@@ -1337,7 +1271,7 @@ Deno.serve(async (req) => {
 
     if (action === "check-stream") {
       return streamResponse(async (emit) => {
-        const result = await checkAppointmentStatus(payload, emit);
+        const result = await checkAppointmentStatus(payload);
         emit({
           type: "result",
           result,

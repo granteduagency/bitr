@@ -21,16 +21,6 @@ export type AppointmentCheckStatus = {
   pttBarcode: string | null;
 };
 
-export type AppointmentDebugStep = {
-  sequence: number;
-  timestamp: string;
-  attempt: number;
-  stage: string;
-  level: "info" | "success" | "error";
-  message: string;
-  data: Record<string, unknown> | null;
-};
-
 export type AppointmentCheckResult = {
   success: boolean;
   checkType: AppointmentCheckType;
@@ -39,22 +29,7 @@ export type AppointmentCheckResult = {
   checkedAt: string;
   parsedData: AppointmentParsedData;
   randevuStatus: AppointmentCheckStatus | null;
-  debugTrace: AppointmentDebugStep[];
 };
-
-type AppointmentStreamEvent =
-  | {
-      type: "step";
-      step: AppointmentDebugStep;
-    }
-  | {
-      type: "result";
-      result: AppointmentCheckResult;
-    }
-  | {
-      type: "error";
-      error: string;
-    };
 
 const fileToBase64 = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -308,85 +283,22 @@ export async function checkAppointmentStatus(input: {
   phone?: string | null;
   email?: string | null;
   parsedData: AppointmentParsedData;
-  onStep?: (step: AppointmentDebugStep) => void;
 }): Promise<AppointmentCheckResult> {
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/randevu-check`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-      },
-      body: JSON.stringify({
-        action: "check-stream",
-        registrationNumber: input.registrationNumber,
-        documentNumber: input.documentNumber,
-        checkType: input.checkType,
-        phone: input.phone || null,
-        email: input.email || null,
-        parsedData: input.parsedData,
-      }),
+  const { data, error } = await supabase.functions.invoke("randevu-check", {
+    body: {
+      action: "check",
+      registrationNumber: input.registrationNumber,
+      documentNumber: input.documentNumber,
+      checkType: input.checkType,
+      phone: input.phone || null,
+      email: input.email || null,
+      parsedData: input.parsedData,
     },
-  );
+  });
 
-  if (!response.ok || !response.body) {
-    const raw = await response.text().catch(() => "");
-    throw new Error(raw || "Appointment status check failed.");
+  if (error) {
+    throw new Error(error.message || "Appointment status check failed.");
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let finalResult: AppointmentCheckResult | null = null;
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        continue;
-      }
-
-      const event = JSON.parse(trimmed) as AppointmentStreamEvent;
-      if (event.type === "step") {
-        input.onStep?.(event.step);
-        continue;
-      }
-
-      if (event.type === "error") {
-        throw new Error(event.error || "Appointment status check failed.");
-      }
-
-      if (event.type === "result") {
-        finalResult = event.result;
-      }
-    }
-  }
-
-  if (buffer.trim()) {
-    const event = JSON.parse(buffer.trim()) as AppointmentStreamEvent;
-    if (event.type === "step") {
-      input.onStep?.(event.step);
-    } else if (event.type === "error") {
-      throw new Error(event.error || "Appointment status check failed.");
-    } else if (event.type === "result") {
-      finalResult = event.result;
-    }
-  }
-
-  if (!finalResult) {
-    throw new Error("Appointment status check returned no result.");
-  }
-
-  return finalResult;
+  return data as AppointmentCheckResult;
 }

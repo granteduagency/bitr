@@ -13,7 +13,6 @@ import {
   normalizePhoneInput,
   parseAppointmentFile,
   suggestAppointmentCheckType,
-  type AppointmentDebugStep,
   type AppointmentCheckResult,
   type AppointmentCheckType,
   type AppointmentParsedData,
@@ -29,22 +28,6 @@ const emptyParsedData: AppointmentParsedData = {
   warnings: [],
 };
 
-const stageLabel = (stage: string) => stage.replace(/\./g, " / ");
-
-const prettifyDebugData = (data: Record<string, unknown> | null) => {
-  if (!data) {
-    return null;
-  }
-
-  const { captchaImageDataUrl, ...rest } = data;
-  const formatted = JSON.stringify(rest, null, 2);
-  return {
-    captchaImageDataUrl:
-      typeof captchaImageDataUrl === "string" ? captchaImageDataUrl : null,
-    formatted: formatted === "{}" ? null : formatted,
-  };
-};
-
 export default function IkametSonuc() {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,7 +39,6 @@ export default function IkametSonuc() {
   const [checkType, setCheckType] = useState<AppointmentCheckType>("phone");
   const [result, setResult] = useState<AppointmentCheckResult | null>(null);
   const [parsedData, setParsedData] = useState<AppointmentParsedData>(emptyParsedData);
-  const [debugSteps, setDebugSteps] = useState<AppointmentDebugStep[]>([]);
   const [form, setForm] = useState({
     registrationNumber: "",
     documentNumber: "",
@@ -80,17 +62,11 @@ export default function IkametSonuc() {
     [parsedData.warnings],
   );
 
-  const visibleDebugSteps = useMemo(
-    () => (result?.debugTrace?.length ? result.debugTrace : debugSteps),
-    [debugSteps, result],
-  );
-
   const resetState = () => {
     setSelectedFile(null);
     setFileName("");
     setResult(null);
     setParsedData(emptyParsedData);
-    setDebugSteps([]);
     setForm({
       registrationNumber: "",
       documentNumber: "",
@@ -110,7 +86,6 @@ export default function IkametSonuc() {
     setSelectedFile(file);
     setFileName(file.name);
     setResult(null);
-    setDebugSteps([]);
     setParsing(true);
 
     try {
@@ -156,7 +131,6 @@ export default function IkametSonuc() {
     if (!selectedFile) return;
 
     setLoading(true);
-    setDebugSteps([]);
 
     try {
       const appointmentUrl = await uploadFile(selectedFile);
@@ -181,9 +155,6 @@ export default function IkametSonuc() {
         email: form.email.trim().toLowerCase(),
         checkType,
         parsedData: finalParsedData,
-        onStep: (step) => {
-          setDebugSteps((prev) => [...prev, step]);
-        },
       });
 
       const clientId = await getOrCreateClient(
@@ -204,7 +175,6 @@ export default function IkametSonuc() {
       if (error) throw error;
 
       setParsedData(finalParsedData);
-      setDebugSteps(checkResult.debugTrace || []);
       setResult(checkResult);
       toast({
         title: checkResult.success ? t("common.success") : t("common.error"),
@@ -456,83 +426,6 @@ export default function IkametSonuc() {
               {t("ikamet.checkInfoDesc")}
             </p>
           </div>
-
-          {(loading || visibleDebugSteps.length > 0) && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] font-bold text-slate-400">
-                    {t("ikamet.debugTitle")}
-                  </p>
-                  <p className="text-sm text-slate-500 mt-1">
-                    {loading ? t("ikamet.debugLive") : t("ikamet.debugFinished")}
-                  </p>
-                </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  {visibleDebugSteps.length}
-                </span>
-              </div>
-
-              {visibleDebugSteps.length === 0 ? (
-                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                  {t("ikamet.debugWaiting")}
-                </div>
-              ) : (
-                <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
-                  {visibleDebugSteps.map((step) => {
-                    const debugData = prettifyDebugData(step.data);
-
-                    return (
-                      <div
-                        key={`${step.sequence}-${step.timestamp}`}
-                        className={`rounded-2xl border p-4 space-y-3 ${
-                          step.level === "error"
-                            ? "border-rose-200 bg-rose-50"
-                            : step.level === "success"
-                              ? "border-emerald-200 bg-emerald-50"
-                              : "border-slate-200 bg-slate-50"
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                              {stageLabel(step.stage)}
-                            </p>
-                            <p className="text-sm font-semibold text-slate-900 mt-1">
-                              {step.message}
-                            </p>
-                          </div>
-                          <div className="text-right text-xs text-slate-500">
-                            <p>#{step.sequence}</p>
-                            <p>{step.attempt > 0 ? `Attempt ${step.attempt}` : "Prep"}</p>
-                          </div>
-                        </div>
-
-                        {debugData?.captchaImageDataUrl && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                              Captcha
-                            </p>
-                            <img
-                              src={debugData.captchaImageDataUrl}
-                              alt="Captcha preview"
-                              className="h-16 rounded-xl border border-slate-200 bg-white px-3 py-2"
-                            />
-                          </div>
-                        )}
-
-                        {debugData?.formatted && (
-                          <pre className="overflow-x-auto rounded-xl bg-slate-950 p-3 text-xs leading-5 text-slate-100">
-                            {debugData.formatted}
-                          </pre>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
 
           <SubmitButton
             isPending={loading}
