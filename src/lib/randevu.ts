@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { invokePublicFunction } from "@/lib/public-functions";
 
 export type AppointmentCheckType = "phone" | "email";
 const PDFJS_DIST_URL = "https://esm.sh/pdfjs-dist@4.10.38/legacy/build/pdf.mjs";
@@ -258,22 +258,14 @@ export async function parseAppointmentFile(file: File): Promise<AppointmentParse
   }
 
   const contentsBase64 = await fileToBase64(file);
-  const { data, error } = await supabase.functions.invoke("randevu-check", {
-    body: {
-      action: "parse",
-      file: {
-        filename: file.name,
-        mimeType: file.type || null,
-        contentsBase64,
-      },
+  return invokePublicFunction<AppointmentParsedData>("randevu-check", {
+    action: "parse",
+    file: {
+      filename: file.name,
+      mimeType: file.type || null,
+      contentsBase64,
     },
   });
-
-  if (error) {
-    throw new Error(error.message || "Appointment file parse failed.");
-  }
-
-  return data as AppointmentParsedData;
 }
 
 export async function checkAppointmentStatus(input: {
@@ -284,21 +276,13 @@ export async function checkAppointmentStatus(input: {
   email?: string | null;
   parsedData: AppointmentParsedData;
 }): Promise<AppointmentCheckResult> {
-  const { data, error } = await supabase.functions.invoke("randevu-check", {
-    body: {
-      action: "check",
-      registrationNumber: input.registrationNumber,
-      documentNumber: input.documentNumber,
-      checkType: input.checkType,
-      phone: input.phone || null,
-      email: input.email || null,
-      parsedData: input.parsedData,
-    },
+  return invokePublicFunction<AppointmentCheckResult>("randevu-check", {
+    action: "check",
+    registrationNumber: input.registrationNumber,
+    documentNumber: input.documentNumber,
+    checkType: input.checkType,
+    phone: input.phone || null,
+    email: input.email || null,
+    parsedData: input.parsedData,
   });
-
-  if (error) {
-    throw new Error(error.message || "Appointment status check failed.");
-  }
-
-  return data as AppointmentCheckResult;
 }

@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { invokePublicFunction } from "@/lib/public-functions";
 
 export interface UniversityCatalogFilters {
   degree: string;
@@ -181,13 +181,10 @@ export function buildUniversityFilterOptions(
 }
 
 export async function fetchUniversityCatalog(): Promise<UniversityCatalogResponse> {
-  const { data, error } = await supabase.functions.invoke("university-catalog", {
-    body: { action: "catalog" },
-  });
-
-  if (error) {
-    throw new Error(error.message || "University catalog could not be loaded.");
-  }
+  const data = await invokePublicFunction<{ workspaceId?: unknown; workspaceName?: unknown; degrees?: unknown; universities?: unknown }>(
+    "university-catalog",
+    { action: "catalog" },
+  );
 
   const universities = Array.isArray(data?.universities)
     ? (data.universities as UniversityCatalogUniversity[])

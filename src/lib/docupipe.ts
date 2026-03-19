@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { invokePublicFunction } from "@/lib/public-functions";
 
 export interface PassportExtractionData {
   passport_number: string | null;
@@ -137,34 +137,20 @@ const fileToBase64 = (file: File) =>
 
 export async function extractPassportFromFile(file: File): Promise<PassportExtractionResult> {
   const contentsBase64 = await fileToBase64(file);
-  const { data, error } = await supabase.functions.invoke("docupipe-passport", {
-    body: {
-      action: "extract",
-      file: {
-        filename: file.name,
-        contentsBase64,
-      },
+  return invokePublicFunction<PassportExtractionResult>("docupipe-passport", {
+    action: "extract",
+    file: {
+      filename: file.name,
+      contentsBase64,
     },
   });
-
-  if (error) {
-    throw new Error(error.message || "Passport extraction failed.");
-  }
-
-  return data as PassportExtractionResult;
 }
 
 export async function getDocuPipeOriginalUrl(documentId: string): Promise<string> {
-  const { data, error } = await supabase.functions.invoke("docupipe-passport", {
-    body: {
-      action: "original-url",
-      documentId,
-    },
+  const data = await invokePublicFunction<{ url?: string }>("docupipe-passport", {
+    action: "original-url",
+    documentId,
   });
-
-  if (error) {
-    throw new Error(error.message || "Could not load passport original.");
-  }
 
   const url = typeof data?.url === "string" ? data.url : "";
   if (!url) {
