@@ -98,8 +98,8 @@ const SERVICE_DETAIL_SECTIONS: Record<ServiceTab, DetailSectionConfig[]> = {
     { key: "family", titleKey: "admin.sectionFamily", fields: ["father_name", "mother_name"] },
     { key: "contact", titleKey: "admin.sectionContact", fields: ["phone", "email", "address", "has_insurance", "supporter_type"] },
     { key: "appointment", titleKey: "admin.sectionAppointment", fields: ["appointment_url", "appointment_result"] },
-    { key: "passport", titleKey: "admin.sectionPassport", fields: ["passport_url", "passport_document_id", "passport_extraction", "photo_url", "student_cert_url"] },
-    { key: "supporter", titleKey: "admin.sectionSupporter", fields: ["supporter_id_front_url", "supporter_id_back_url", "supporter_passport_url", "supporter_passport_document_id", "supporter_passport_extraction", "supporter_student_cert_url", "notes"] },
+    { key: "passport", titleKey: "admin.sectionPassport", fields: ["passport_url", "photo_url", "passport_extraction", "student_cert_url"] },
+    { key: "supporter", titleKey: "admin.sectionSupporter", fields: ["supporter_id_front_url", "supporter_id_back_url", "supporter_passport_url", "supporter_passport_extraction", "supporter_student_cert_url", "notes"] },
   ],
   visa: [
     { key: "overview", titleKey: "admin.sectionOverview", fields: ["type", "phone", "created_at", "status"] },
@@ -111,7 +111,7 @@ const SERVICE_DETAIL_SECTIONS: Record<ServiceTab, DetailSectionConfig[]> = {
   ],
   tercume: [
     { key: "overview", titleKey: "admin.sectionOverview", fields: ["document_types", "from_language", "to_language", "created_at", "status"] },
-    { key: "documents", titleKey: "admin.sectionDocuments", fields: ["documents_url", "passport_document_id", "passport_extraction"] },
+    { key: "documents", titleKey: "admin.sectionDocuments", fields: ["documents_url", "passport_extraction"] },
   ],
   hukuk: [
     { key: "case", titleKey: "admin.sectionCase", fields: ["full_name", "phone", "problem", "created_at", "status"] },
@@ -123,7 +123,7 @@ const SERVICE_DETAIL_SECTIONS: Record<ServiceTab, DetailSectionConfig[]> = {
   universite: [
     { key: "overview", titleKey: "admin.sectionOverview", fields: ["external_university_name", "phone", "created_at", "status"] },
     { key: "study", titleKey: "admin.sectionStudy", fields: ["degree", "faculty", "program", "language"] },
-    { key: "documents", titleKey: "admin.sectionDocuments", fields: ["passport_url", "passport_document_id", "passport_extraction", "diploma_url", "diploma_supplement_url", "photo_url"] },
+    { key: "documents", titleKey: "admin.sectionDocuments", fields: ["passport_url", "photo_url", "passport_extraction", "diploma_url", "diploma_supplement_url"] },
   ],
 };
 
@@ -301,14 +301,12 @@ export default function AdminPage() {
       { key: 'appointment_url', labelKey: 'admin.appointmentFile', isFile: true },
       { key: 'appointment_result', labelKey: 'admin.appointmentCheckResult', isJson: true },
       { key: 'passport_url', labelKey: 'form.passport', isFile: true },
-      { key: 'passport_document_id', labelKey: 'admin.passportOriginal', isDocuPipeOriginal: true },
       { key: 'passport_extraction', labelKey: 'admin.passportExtraction', isJson: true },
       { key: 'photo_url', labelKey: 'form.photo', isFile: true },
       { key: 'student_cert_url', labelKey: 'form.studentCert', isFile: true },
       { key: 'supporter_id_front_url', labelKey: 'form.supporterIdFront', isFile: true },
       { key: 'supporter_id_back_url', labelKey: 'form.supporterIdBack', isFile: true },
       { key: 'supporter_passport_url', labelKey: 'form.supporterPassport', isFile: true },
-      { key: 'supporter_passport_document_id', labelKey: 'admin.supporterPassportOriginal', isDocuPipeOriginal: true },
       { key: 'supporter_passport_extraction', labelKey: 'admin.supporterPassportExtraction', isJson: true },
       { key: 'supporter_student_cert_url', labelKey: 'form.supporterStudentCert', isFile: true },
       { key: 'status', labelKey: 'admin.status' },
@@ -335,7 +333,6 @@ export default function AdminPage() {
       { key: 'from_language', labelKey: 'tercume.fromLanguage' },
       { key: 'to_language', labelKey: 'tercume.toLanguage' },
       { key: 'documents_url', labelKey: 'tercume.uploadDocuments', isFile: true },
-      { key: 'passport_document_id', labelKey: 'admin.passportOriginal', isDocuPipeOriginal: true },
       { key: 'passport_extraction', labelKey: 'admin.passportExtraction', isJson: true },
       { key: 'status', labelKey: 'admin.status' },
       { key: 'created_at', labelKey: 'admin.createdAt', isDate: true },
@@ -362,7 +359,6 @@ export default function AdminPage() {
       { key: 'language', labelKey: 'universite.language' },
       { key: 'phone', labelKey: 'form.phone' },
       { key: 'passport_url', labelKey: 'universite.passportUpload', isFile: true },
-      { key: 'passport_document_id', labelKey: 'admin.passportOriginal', isDocuPipeOriginal: true },
       { key: 'passport_extraction', labelKey: 'admin.passportExtraction', isJson: true },
       { key: 'diploma_url', labelKey: 'universite.diplomaUpload', isFile: true },
       { key: 'diploma_supplement_url', labelKey: 'universite.diplomaSupplementUpload', isFile: true },
