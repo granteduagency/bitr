@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   getDocuPipeOriginalUrl,
@@ -151,10 +151,46 @@ type TabItem = {
   label: string;
   icon: LucideIcon;
 };
+type AdminNotificationItem = {
+  id: string;
+  serviceTab: ServiceTab;
+  applicationId: string;
+  title: string;
+  description: string;
+  createdAt: string;
+  read: boolean;
+};
 
 const isServiceTab = (value: AdminTab): value is ServiceTab => value in tableMap;
 const formatNullableDate = (value: string | null | undefined) =>
   value ? new Date(value).toLocaleDateString() : "—";
+const applicationTableEntries = Object.entries(tableMap) as Array<[ServiceTab, ApplicationTableName]>;
+const isServiceTabKey = (value: string): value is ServiceTab =>
+  applicationTableEntries.some(([serviceTab]) => serviceTab === value);
+const buildAdminNotificationUrl = (serviceTab: ServiceTab, applicationId: string) =>
+  `/admin?notification=1&tab=${encodeURIComponent(serviceTab)}&id=${encodeURIComponent(applicationId)}`;
+const formatNotificationDate = (value: string) =>
+  new Date(value).toLocaleString([], {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+const fetchAdminApplicationById = async (serviceTab: ServiceTab, id: string) => {
+  const { data, error } = await supabase
+    .from(tableMap[serviceTab])
+    .select("*, clients(name, phone)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Fetch application error:", error);
+    return null;
+  }
+
+  return data as AdminApplicationRecord | null;
+};
 
 export default function AdminPage() {
   const { t } = useTranslation();
@@ -177,12 +213,14 @@ export default function AdminPage() {
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [notifications, setNotifications] = useState<AdminNotificationItem[]>([]);
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
     completed: 0,
     today: 0,
   });
+  const hasRequestedNotificationPermission = useRef(false);
 
   useEffect(() => {
     supabase.auth.onAuthStateChange((_, s) => {
@@ -197,6 +235,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!session) {
+      setNotifications([]);
       setSettingsForm({
         fullName: "",
         avatarUrl: "",
@@ -220,7 +259,18 @@ export default function AdminPage() {
       newPassword: "",
       confirmPassword: "",
     });
-  }, [session]);
+  }, [openNotificationItem, session]);
+
+  useEffect(() => {
+    if (!session || hasRequestedNotificationPermission.current || typeof window === "undefined") {
+      return;
+    }
+
+    hasRequestedNotificationPermission.current = true;
+    if ("Notification" in window && Notification.permission === "default") {
+      void Notification.requestPermission();
+    }
+  }, [openNotificationItem, session]);
 
   const login = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,7 +289,36 @@ export default function AdminPage() {
   const logout = async () => {
     await supabase.auth.signOut();
     setSession(null);
+    setNotifications([]);
   };
+
+  const openNotificationItem = useCallback(async (
+    serviceTab: ServiceTab,
+    applicationId: string,
+    notificationId?: string,
+  ) => {
+    const application = await fetchAdminApplicationById(serviceTab, applicationId);
+    if (!application) {
+      toast({
+        title: t("common.error"),
+        description: t("admin.notificationLoadError"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (notificationId) {
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === notificationId ? { ...notification, read: true } : notification,
+        ),
+      );
+    }
+
+    setTab(serviceTab);
+    setSelectedApp(application);
+    window.history.replaceState({}, document.title, "/admin");
+  }, [t]);
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -598,6 +677,113 @@ export default function AdminPage() {
       fetchData(tab);
     }
   }, [session, tab]);
+
+  useEffect(() => {
+    if (!session || typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const serviceTab = params.get("tab");
+    const applicationId = params.get("id");
+    const isNotificationTarget = params.get("notification") === "1";
+
+    if (!isNotificationTarget || !serviceTab || !applicationId || !isServiceTabKey(serviceTab)) {
+      return;
+    }
+
+    void openNotificationItem(serviceTab, applicationId);
+  }, [openNotificationItem, session]);
+
+  useEffect(() => {
+    if (!session || typeof window === "undefined") return;
+
+    let isActive = true;
+
+    const showSystemNotification = async (notification: AdminNotificationItem) => {
+      if (!("Notification" in window) || Notification.permission !== "granted") {
+        return;
+      }
+
+      const notificationUrl = `${window.location.origin}${buildAdminNotificationUrl(
+        notification.serviceTab,
+        notification.applicationId,
+      )}`;
+      const options = {
+        body: notification.description,
+        icon: "/pwa-192.png",
+        badge: "/pwa-192.png",
+        tag: notification.id,
+        data: { url: notificationUrl },
+      };
+
+      if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification(notification.title, options);
+        return;
+      }
+
+      const browserNotification = new Notification(notification.title, options);
+      browserNotification.onclick = () => {
+        window.focus();
+        void openNotificationItem(
+          notification.serviceTab,
+          notification.applicationId,
+          notification.id,
+        );
+        browserNotification.close();
+      };
+    };
+
+    const channels = applicationTableEntries.map(([serviceTab, table]) =>
+      supabase
+        .channel(`admin-notifications-${table}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table },
+          async (payload) => {
+            const applicationId =
+              payload.new && typeof payload.new.id === "string" ? payload.new.id : "";
+            if (!applicationId || !isActive) {
+              return;
+            }
+
+            const application = await fetchAdminApplicationById(serviceTab, applicationId);
+            if (!application || !isActive) {
+              return;
+            }
+
+            const relatedName = application.clients?.name?.trim() || application.client?.name?.trim() || "";
+            const relatedPhone = application.clients?.phone?.trim() || application.client?.phone?.trim() || "";
+            const serviceLabel = serviceTab === "visa" ? t("services.viza") : t(`services.${serviceTab}`);
+            const notification: AdminNotificationItem = {
+              id: `${serviceTab}:${application.id}:${application.created_at || new Date().toISOString()}`,
+              serviceTab,
+              applicationId: application.id,
+              title: t("admin.newApplicationTitle", { service: serviceLabel }),
+              description: relatedName || relatedPhone || t("admin.viewClient"),
+              createdAt: application.created_at || new Date().toISOString(),
+              read: false,
+            };
+
+            setNotifications((prev) => [notification, ...prev].slice(0, 20));
+            setStats((prev) => ({
+              total: prev.total + 1,
+              pending: prev.pending + 1,
+              completed: prev.completed,
+              today: prev.today + 1,
+            }));
+            void showSystemNotification(notification);
+          },
+        )
+        .subscribe(),
+    );
+
+    return () => {
+      isActive = false;
+      channels.forEach((channel) => {
+        void supabase.removeChannel(channel);
+      });
+    };
+  }, [openNotificationItem, session, t]);
 
   const updateStatus = async (id: string, status: string) => {
     if (!isServiceTab(tab)) return;
@@ -1160,6 +1346,7 @@ export default function AdminPage() {
     { label: t("services.calisma"), value: "—", bg: "bg-[#ebd1d8]", badge: "", badgeColors: "", icon: Clock },
     { isEmpty: true, bg: "bg-[#f4f3f0]" },
   ];
+  const unreadNotifications = notifications.filter((notification) => !notification.read).length;
 
   return (
     <div className="min-h-screen bg-[#dcdad2] flex p-3">
@@ -1199,10 +1386,69 @@ export default function AdminPage() {
           <div className="flex items-center gap-6">
             <LanguageSwitcher />
             <div className="flex items-center gap-4 text-slate-600 border-l border-slate-200 pl-6">
-              <button className="relative text-slate-500 hover:text-black transition-colors">
-                <Bell className="w-5 h-5" />
-                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-[#ff6844] rounded-full border-2 border-white"></span>
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="relative text-slate-500 hover:text-black transition-colors w-10 h-10 rounded-full hover:bg-white flex items-center justify-center">
+                    <Bell className="w-5 h-5" />
+                    {unreadNotifications > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#ff6844] rounded-full border-2 border-white text-[10px] font-bold text-white flex items-center justify-center">
+                        {Math.min(unreadNotifications, 9)}
+                      </span>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="rounded-2xl bg-white p-2 border-slate-100 shadow-xl min-w-[320px] max-w-[360px]">
+                  <div className="px-3 py-2 border-b border-slate-100">
+                    <p className="text-sm font-bold text-slate-900">{t("admin.notifications")}</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {unreadNotifications > 0
+                        ? `${unreadNotifications} ${t("admin.unreadNotifications")}`
+                        : t("admin.notificationsEmpty")}
+                    </p>
+                  </div>
+                  <div className="max-h-[360px] overflow-y-auto py-1">
+                    {notifications.length === 0 ? (
+                      <div className="px-3 py-6 text-sm text-slate-400 text-center">
+                        {t("admin.notificationsEmpty")}
+                      </div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <DropdownMenuItem
+                          key={notification.id}
+                          className="rounded-xl px-3 py-3 items-start cursor-pointer"
+                          onSelect={() => {
+                            void openNotificationItem(
+                              notification.serviceTab,
+                              notification.applicationId,
+                              notification.id,
+                            );
+                          }}
+                        >
+                          <div className="flex w-full items-start gap-3">
+                            <span
+                              className={cn(
+                                "mt-1 h-2.5 w-2.5 rounded-full shrink-0",
+                                notification.read ? "bg-slate-200" : "bg-[#ff6844]",
+                              )}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-slate-900">
+                                {notification.title}
+                              </p>
+                              <p className="text-sm text-slate-500 mt-1 break-words">
+                                {notification.description}
+                              </p>
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400 mt-2">
+                                {formatNotificationDate(notification.createdAt)}
+                              </p>
+                            </div>
+                          </div>
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-2 ml-2 rounded-full px-2 py-1 hover:bg-slate-100 transition-colors">
