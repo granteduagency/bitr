@@ -1,5 +1,7 @@
-import { Button, Spinner } from '@heroui/react';
+import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface SubmitButtonProps {
   isPending?: boolean;
@@ -14,24 +16,13 @@ export function SubmitButton({ isPending, isDisabled, className, pendingText }: 
   return (
     <Button
       type="submit"
-      fullWidth
-      isPending={isPending}
-      isDisabled={isDisabled}
-      className={className}
-      render={(props, { isPressed }) => (
-        <button
-          {...props}
-          // Use the custom render pattern requested by the user
-          data-custom={isPressed ? "pressed" : "bar"}
-        />
-      )}
+      disabled={isDisabled || isPending}
+      className={cn("w-full", className)}
     >
-      {({ isPending }) => (
-        <>
-          {isPending && <Spinner color="current" size="sm" />}
-          {isPending ? pendingText || t('common.loading') : t('common.submit')}
-        </>
-      )}
+      <>
+        {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+        {isPending ? pendingText || t('common.loading') : t('common.submit')}
+      </>
     </Button>
   );
 }

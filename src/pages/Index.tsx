@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Form, Button } from "@heroui/react";
+import { Form } from "@heroui/react";
 import { ClientPhoneField } from "@/components/shared/ClientPhoneField";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import { InstallAppButton } from "@/components/shared/InstallAppButton";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   getDefaultClientPhoneCountry,
@@ -19,7 +20,7 @@ import {
   saveStoredClientIdentity,
   syncStoredClientLead,
 } from "@/lib/client-tracking";
-import { Plane, Car, Luggage, Cloud } from "lucide-react";
+import { Plane, Car, Luggage, Cloud, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const Index = () => {
@@ -36,6 +37,7 @@ const Index = () => {
     name: false,
     phone: false,
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const normalizedName = useMemo(() => normalizeClientName(form.name), [form.name]);
   const nameError = useMemo(() => validateClientName(form.name), [form.name]);
@@ -73,20 +75,30 @@ const Index = () => {
     e.preventDefault();
     setTouched({ name: true, phone: true });
 
-    if (!canSubmit) return;
+    if (!canSubmit || isSubmitting) return;
 
-    saveStoredClientIdentity({
-      name: normalizedName,
-      phone: form.phone,
-      country: phoneCountry,
-    });
-    await syncStoredClientLead({
-      source: "landing",
-      preferredCountry: phoneCountry,
-    }).catch((error) => {
-      console.error("Lead sync error:", error);
-    });
-    navigate(redirectTarget, { replace: true });
+    setIsSubmitting(true);
+    let shouldResetSubmitting = true;
+
+    try {
+      saveStoredClientIdentity({
+        name: normalizedName,
+        phone: form.phone,
+        country: phoneCountry,
+      });
+      await syncStoredClientLead({
+        source: "landing",
+        preferredCountry: phoneCountry,
+      }).catch((error) => {
+        console.error("Lead sync error:", error);
+      });
+      shouldResetSubmitting = false;
+      navigate(redirectTarget, { replace: true });
+    } finally {
+      if (shouldResetSubmitting) {
+        setIsSubmitting(false);
+      }
+    }
   };
 
   return (
@@ -111,7 +123,7 @@ const Index = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             transition={{ duration: 0.4 }}
-            className="w-full max-w-md z-10 flex flex-col items-center justify-center text-center mt-4"
+            className="w-full max-w-md z-10 flex flex-col items-center justify-center text-center"
           >
             {/* Playful Illustration Wrapper */}
             <div className="relative w-full aspect-square max-w-[320px] flex items-center justify-center mb-6">
@@ -141,7 +153,7 @@ const Index = () => {
                   repeat: Infinity,
                   ease: "easeInOut",
                 }}
-                className="relative z-10 flex items-center justify-center p-2"
+                className="relative z-10 flex items-center justify-center"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -365,7 +377,8 @@ const Index = () => {
             </p>
 
             <Button
-              onPress={() => setShowForm(true)}
+              type="button"
+              onClick={() => setShowForm(true)}
               className="rounded-full bg-black text-white hover:bg-black/90 px-14 py-7 w-full max-w-[280px] text-lg font-bold shadow-[0_8px_30px_rgba(0,0,0,0.15)] mt-2"
             >
               {t("landing.getStarted")}
@@ -382,9 +395,11 @@ const Index = () => {
           >
             <div className="relative bg-transparent shadow-none border-none p-8 sm:p-10 flex flex-col items-center min-h-[500px]">
               {/* Back button */}
-              <button
+              <Button
+                type="button"
+                variant="outline"
                 onClick={() => setShowForm(false)}
-                className="absolute top-6 left-6 text-slate-400 hover:text-black transition-colors bg-white z-20 p-2 rounded-full border border-slate-200 shadow-sm"
+                className="absolute top-6 left-6 z-20 h-10 w-10 rounded-full border-slate-200 bg-white p-0 text-slate-400 shadow-sm hover:bg-white hover:text-black"
                 aria-label="Back"
               >
                 <svg
@@ -399,7 +414,7 @@ const Index = () => {
                 >
                   <path d="m15 18-6-6 6-6" />
                 </svg>
-              </button>
+              </Button>
 
               {/* Pastel floating backgrounds from the reference image */}
               <div className="absolute top-0 right-0 w-[200px] h-[200px] bg-[#FEF4E1] blur-[40px] rounded-full -translate-y-1/2 translate-x-1/4 pointer-events-none" />
@@ -668,10 +683,11 @@ const Index = () => {
 
                   <Button
                     type="submit"
-                    isDisabled={!canSubmit}
+                    disabled={!canSubmit || isSubmitting}
                     className="w-full mt-2 h-14 bg-black text-white hover:bg-black/90 rounded-[2rem] text-base font-bold shadow-lg"
                   >
-                    {t("landing.loginBtn")}
+                    {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {isSubmitting ? t("landing.loginLoading") : t("landing.loginBtn")}
                   </Button>
                 </Form>
               </div>

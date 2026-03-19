@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Surface, TextField, TextArea, Label, Input, Spinner } from '@heroui/react';
+import { Surface, TextField, TextArea, Label, Input } from '@heroui/react';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';

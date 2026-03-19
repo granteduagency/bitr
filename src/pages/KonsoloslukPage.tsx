@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
 
 const countries = [
   "uzbekistan",
@@ -50,12 +51,14 @@ export default function KonsoloslukPage() {
   if (selected)
     return (
       <div className="space-y-6 animate-fade-in">
-        <button
+        <Button
+          type="button"
+          variant="ghost"
           onClick={() => setSelected(null)}
-          className="text-sm text-slate-500 hover:text-slate-900 font-medium transition-colors"
+          className="w-fit px-0 text-sm font-medium text-slate-500 hover:bg-transparent hover:text-slate-900"
         >
           ← {t("common.back")}
-        </button>
+        </Button>
         <div
           className="rounded-[1.5rem] p-6 md:p-8"
           style={{

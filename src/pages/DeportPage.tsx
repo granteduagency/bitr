@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Input, Label, Surface, TextField } from "@heroui/react";
+import { Input, Label, Surface, TextField } from "@heroui/react";
+import { Button } from "@/components/ui/button";
 import { calculateDeport } from "@/lib/deportCalculation";
 import { AlertTriangle, CheckCircle, Calculator } from "lucide-react";
 import { motion } from "framer-motion";

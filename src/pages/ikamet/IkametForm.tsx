@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
-  Button, Input, Label, Surface, TextField, Modal,
+  Input, Label, Surface, TextField, Modal,
 } from '@heroui/react';
+import { Button } from '@/components/ui/button';
 import { FileUpload } from '@/components/shared/FileUpload';
 import { PassportUploadField } from '@/components/shared/PassportUploadField';
 import { TabSelector } from '@/components/shared/TabSelector';
@@ -57,8 +58,8 @@ export default function IkametForm({ category, type }: IkametFormProps) {
               <Modal.Heading className="text-center">{t('ikamet.uzunDonemModal')}</Modal.Heading>
             </Modal.Header>
             <Modal.Footer>
-              <Button className="flex-1" onPress={() => { setUzunDonemEligible(true); setUzunDonemOpen(false); }}>{t('common.yes')}</Button>
-              <Button className="flex-1" variant="secondary" onPress={() => setUzunDonemEligible(false)}>{t('common.no')}</Button>
+              <Button type="button" className="flex-1" onClick={() => { setUzunDonemEligible(true); setUzunDonemOpen(false); }}>{t('common.yes')}</Button>
+              <Button type="button" className="flex-1" variant="secondary" onClick={() => setUzunDonemEligible(false)}>{t('common.no')}</Button>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
@@ -73,7 +74,7 @@ export default function IkametForm({ category, type }: IkametFormProps) {
           <MessageCircle className="h-10 w-10 text-[#4A6EC5]" />
         </div>
         <h2 className="font-heading text-2xl font-extrabold text-slate-900">{t('ikamet.uzunDonemNo')}</h2>
-        <Button onPress={() => navigate('/dashboard/iletisim')}>{t('services.iletisim')}</Button>
+        <Button type="button" onClick={() => navigate('/dashboard/iletisim')}>{t('services.iletisim')}</Button>
       </motion.div>
     );
   }

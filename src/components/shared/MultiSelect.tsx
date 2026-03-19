@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Button, Label } from '@heroui/react';
+import { Label } from '@heroui/react';
 import { Check, ChevronsUpDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface MultiSelectOption {
   value: string;
@@ -51,9 +52,10 @@ export function MultiSelect({
       <Label className="text-sm font-medium">{label}</Label>
       <div className="relative">
         <Button
+          type="button"
           variant="secondary"
           className="w-full justify-between text-left font-normal"
-          onPress={() => setOpen(o => !o)}
+          onClick={() => setOpen(o => !o)}
         >
           <span className={value.length > 0 ? 'text-foreground' : 'text-muted'}>
             {value.length > 0
@@ -67,33 +69,35 @@ export function MultiSelect({
         {open && (
           <div className="absolute z-50 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
             {/* Select All */}
-            <button
+            <Button
               type="button"
               onClick={toggleAll}
-              className="flex items-center gap-2 w-full px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100"
+              variant="ghost"
+              className="flex h-auto w-full items-center gap-2 rounded-none border-b border-slate-100 px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 justify-start"
             >
               <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${allSelected ? 'bg-blue-500 border-blue-500' : 'border-slate-300'}`}>
                 {allSelected && <Check className="h-3 w-3 text-white" />}
               </div>
               {selectAllLabel}
-            </button>
+            </Button>
 
             {/* Options */}
             <div className="max-h-[200px] overflow-y-auto py-1">
               {options.map(option => {
                 const selected = value.includes(option.value);
                 return (
-                  <button
+                  <Button
                     key={option.value}
                     type="button"
                     onClick={() => toggle(option.value)}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                    variant="ghost"
+                    className="flex h-auto w-full items-center gap-2 justify-start rounded-none px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
                   >
                     <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selected ? 'bg-blue-500 border-blue-500' : 'border-slate-300'}`}>
                       {selected && <Check className="h-3 w-3 text-white" />}
                     </div>
                     {option.label}
-                  </button>
+                  </Button>
                 );
               })}
             </div>

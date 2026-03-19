@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Input, Label, Surface, TextField, Spinner } from '@heroui/react';
+import { Input, Label, Surface, TextField } from '@heroui/react';
+import { Button } from '@/components/ui/button';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
@@ -77,9 +78,9 @@ export default function VizaPage() {
     const IconComp = VIZA_ICONS[selectedType] || Plane;
     return (
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-        <button onClick={() => setSelectedType(null)} className="text-sm text-slate-500 hover:text-slate-900 font-medium transition-colors">
+        <Button type="button" variant="ghost" onClick={() => setSelectedType(null)} className="w-fit px-0 text-sm font-medium text-slate-500 hover:bg-transparent hover:text-slate-900">
           ← {t('common.back')}
-        </button>
+        </Button>
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ backgroundColor: style.bg }}>
             <IconComp className="h-7 w-7" style={{ color: style.color }} />

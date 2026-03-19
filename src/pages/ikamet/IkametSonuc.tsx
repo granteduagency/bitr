@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Input, Label, Surface, TextField } from "@heroui/react";
+import { Input, Label, Surface, TextField } from "@heroui/react";
 import { Upload, CheckCircle2, RotateCcw, FileText } from "lucide-react";
 import { motion } from "framer-motion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SubmitButton } from "@/components/shared/SubmitButton";
+import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import { getOrCreateClient, supabase, uploadFile } from "@/lib/supabase";
 import { notifyAdminNewApplication } from "@/lib/admin-push";
@@ -327,8 +328,9 @@ export default function IkametSonuc() {
 
           <div className="flex justify-end">
             <Button
+              type="button"
               variant="secondary"
-              onPress={resetState}
+              onClick={resetState}
               className="rounded-2xl"
             >
               <RotateCcw className="h-4 w-4" />
@@ -346,8 +348,8 @@ export default function IkametSonuc() {
               <Button
                 type="button"
                 variant="secondary"
-                onPress={() => inputRef.current?.click()}
-                isPending={parsing}
+                disabled={parsing}
+                onClick={() => inputRef.current?.click()}
                 className="rounded-2xl"
               >
                 {parsing ? (

@@ -13,7 +13,8 @@ import {
   Scale,
   Phone,
 } from "lucide-react";
-import { Modal, Button } from "@heroui/react";
+import { Modal } from "@heroui/react";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 // Soft pastel color palette matching the Figma design
@@ -101,8 +102,10 @@ export default function Dashboard() {
             </Modal.Header>
             <Modal.Body>
               <div className="flex flex-col gap-3">
-                <button
-                  className="flex items-center gap-4 p-4 rounded-2xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 transition-all duration-200 text-left"
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex h-auto items-center gap-4 rounded-2xl border-slate-200 p-4 text-left hover:border-blue-300 hover:bg-blue-50/50 justify-start"
                   onClick={() => {
                     setCalismaOpen(false);
                     navigate("/dashboard/calisma/yurt-ici");
@@ -119,9 +122,11 @@ export default function Dashboard() {
                       Turkiya ichida ishlash uchun
                     </p>
                   </div>
-                </button>
-                <button
-                  className="flex items-center gap-4 p-4 rounded-2xl border border-slate-200 hover:border-violet-300 hover:bg-violet-50/50 transition-all duration-200 text-left"
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex h-auto items-center gap-4 rounded-2xl border-slate-200 p-4 text-left hover:border-violet-300 hover:bg-violet-50/50 justify-start"
                   onClick={() => {
                     setCalismaOpen(false);
                     navigate("/dashboard/calisma/yurt-disi");
@@ -138,7 +143,7 @@ export default function Dashboard() {
                       Chet elda ishlash uchun
                     </p>
                   </div>
-                </button>
+                </Button>
               </div>
             </Modal.Body>
           </Modal.Dialog>

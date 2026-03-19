@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Input, Label, Surface, TextField, Spinner } from '@heroui/react';
+import { Input, Label, Surface, TextField } from '@heroui/react';
 import { TabSelector } from '@/components/shared/TabSelector';
 import { FileUpload } from '@/components/shared/FileUpload';
 import { PassportUploadField } from '@/components/shared/PassportUploadField';

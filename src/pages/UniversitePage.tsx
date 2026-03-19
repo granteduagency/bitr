@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Input, Label, Surface, TextField } from '@heroui/react';
+import { Input, Label, Surface, TextField } from '@heroui/react';
 import { FileUpload } from '@/components/shared/FileUpload';
 import { PassportUploadField } from '@/components/shared/PassportUploadField';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
+import { Button } from '@/components/ui/button';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
 import {
@@ -40,6 +41,12 @@ const EMPTY_FILTERS: UniversityCatalogFilters = {
   program: '',
   language: '',
 };
+
+const EMPTY_SELECT_VALUES = {
+  faculty: '__empty-faculty__',
+  program: '__empty-program__',
+  language: '__empty-language__',
+} as const;
 
 const UniversitySearchSkeleton = () => (
   <div className="space-y-6">
@@ -81,6 +88,26 @@ const UniversityResultsSkeleton = () => (
     ))}
   </div>
 );
+
+function renderSelectItems(
+  options: string[],
+  emptyValue: string,
+  emptyLabel: string,
+) {
+  if (options.length === 0) {
+    return (
+      <SelectItem value={emptyValue} disabled>
+        {emptyLabel}
+      </SelectItem>
+    );
+  }
+
+  return options.map((option) => (
+    <SelectItem key={option} value={option}>
+      {option}
+    </SelectItem>
+  ));
+}
 
 export default function UniversitePage() {
   const { t } = useTranslation();
@@ -290,7 +317,7 @@ export default function UniversitePage() {
   /* ── Apply step ── */
   if (step === 'apply' && selectedUni) return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <button onClick={() => setStep('results')} className="text-sm text-slate-500 hover:text-slate-900 font-medium transition-colors">← {t('common.back')}</button>
+      <Button type="button" variant="ghost" onClick={() => setStep('results')} className="w-fit px-0 text-sm font-medium text-slate-500 hover:bg-transparent hover:text-slate-900">← {t('common.back')}</Button>
       <div className="flex items-center gap-4">
         <div className="w-14 h-14 rounded-2xl bg-[#C8D5F5] flex items-center justify-center"><GraduationCap className="h-7 w-7 text-[#4A6EC5]" /></div>
         <div>
@@ -338,7 +365,7 @@ export default function UniversitePage() {
             </p>
           ) : null}
         </div>
-        <button onClick={() => setStep('search')} className="text-sm text-slate-500 hover:text-slate-900 font-medium transition-colors">{t('common.back')}</button>
+        <Button type="button" variant="ghost" onClick={() => setStep('search')} className="w-fit px-0 text-sm font-medium text-slate-500 hover:bg-transparent hover:text-slate-900">{t('common.back')}</Button>
       </div>
       {catalogLoading ? (
         <UniversityResultsSkeleton />
@@ -474,9 +501,11 @@ export default function UniversitePage() {
                     <SelectValue placeholder={t('common.select')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {filterOptions.faculties.map((option) => (
-                      <SelectItem key={option} value={option}>{option}</SelectItem>
-                    ))}
+                    {renderSelectItems(
+                      filterOptions.faculties,
+                      EMPTY_SELECT_VALUES.faculty,
+                      t('universite.noFaculties'),
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -487,9 +516,11 @@ export default function UniversitePage() {
                     <SelectValue placeholder={t('common.select')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {filterOptions.programs.map((option) => (
-                      <SelectItem key={option} value={option}>{option}</SelectItem>
-                    ))}
+                    {renderSelectItems(
+                      filterOptions.programs,
+                      EMPTY_SELECT_VALUES.program,
+                      t('universite.noPrograms'),
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -500,16 +531,18 @@ export default function UniversitePage() {
                     <SelectValue placeholder={t('common.select')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {filterOptions.languages.map((option) => (
-                      <SelectItem key={option} value={option}>{option}</SelectItem>
-                    ))}
+                    {renderSelectItems(
+                      filterOptions.languages,
+                      EMPTY_SELECT_VALUES.language,
+                      t('universite.noLanguages'),
+                    )}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="flex flex-col md:flex-row gap-3">
-              <Button onPress={openResults} isDisabled={!canSearch} fullWidth>{t('universite.searchBtn')}</Button>
-              <Button variant="flat" onPress={clearSearch} fullWidth>{t('universite.clearFilters')}</Button>
+              <Button type="button" onClick={openResults} disabled={!canSearch} className="w-full">{t('universite.searchBtn')}</Button>
+              <Button type="button" variant="secondary" onClick={clearSearch} className="w-full">{t('universite.clearFilters')}</Button>
             </div>
           </>
         )}

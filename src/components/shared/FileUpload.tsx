@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
-import { Upload, CheckCircle, X } from 'lucide-react';
+import { Upload, CheckCircle, X, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Button, Spinner, Label } from '@heroui/react';
+import { Label } from '@heroui/react';
+import { Button } from '@/components/ui/button';
 import { uploadFile } from '@/lib/supabase';
 
 interface FileUploadProps {
@@ -44,18 +45,20 @@ export function FileUpload({ label, accept = 'image/*,.pdf', onUpload, value }: 
         {uploaded ? (
           <>
             <Button
+              type="button"
               variant="secondary"
               size="sm"
-              isDisabled
+              disabled
               className="pointer-events-none"
             >
               <CheckCircle className="h-4 w-4 text-[#3A8A56]" />
               <span className="truncate max-w-[180px]">{fileName || t('common.upload') + ' ✓'}</span>
             </Button>
             <Button
+              type="button"
               variant="secondary"
-              size="sm"
-              onPress={handleRemove}
+              size="icon"
+              onClick={handleRemove}
               aria-label="Remove"
             >
               <X className="h-3.5 w-3.5" />
@@ -63,18 +66,15 @@ export function FileUpload({ label, accept = 'image/*,.pdf', onUpload, value }: 
           </>
         ) : (
           <Button
+            type="button"
             variant="secondary"
             size="sm"
-            isPending={uploading}
-            onPress={() => inputRef.current?.click()}
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
           >
-            {({ isPending }) => (
-              <>
-                {isPending ? <Spinner color="current" size="sm" /> : <Upload className="h-4 w-4" />}
-                {isPending ? t('common.loading') : label}
-                <span className="text-muted text-xs ml-1">({formatHint})</span>
-              </>
-            )}
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {uploading ? t('common.loading') : label}
+            <span className="text-muted text-xs ml-1">({formatHint})</span>
           </Button>
         )}
       </div>

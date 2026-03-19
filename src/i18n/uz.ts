@@ -55,6 +55,7 @@ export const uz = {
     passwordPlaceholder: "Parol",
     forgotPassword: "Parolni Unutdingizmi?",
     loginBtn: "Kirish",
+    loginLoading: "Kirilmoqda...",
     getStarted: "Qani ketdik!",
   },
   services: {
@@ -291,6 +292,9 @@ export const uz = {
     catalogError: "Universitet katalogini yuklab bo'lmadi",
     workspaceLabel: "Manba workspace",
     matchingPrograms: "Mos dasturlar",
+    noFaculties: "Bu bosqichda fakultet yo'q",
+    noPrograms: "Hozircha dastur mavjud emas",
+    noLanguages: "Hozircha bu talablarga mos tilda o'quv dasturi yo'q",
     passportUpload: "Pasport rasmi",
     diplomaUpload: "Diplom yoki attestat",
     diplomaSupplementUpload: "Diplom/Attestat ilovasi",

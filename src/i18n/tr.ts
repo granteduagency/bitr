@@ -55,6 +55,7 @@ export const tr = {
     passwordPlaceholder: "Şifre",
     forgotPassword: "Şifremi Unuttum",
     loginBtn: "Giriş",
+    loginLoading: "Giriş yapılıyor...",
     getStarted: "Haydi Başlayalım!",
   },
   services: {
@@ -291,6 +292,9 @@ export const tr = {
     catalogError: "Üniversite kataloğu yüklenemedi",
     workspaceLabel: "Kaynak workspace",
     matchingPrograms: "Eşleşen programlar",
+    noFaculties: "Bu aşamada fakülte bulunmuyor",
+    noPrograms: "Şu anda uygun program bulunmuyor",
+    noLanguages: "Şu anda bu kriterlere uygun dilde eğitim programı yok",
     passportUpload: "Pasaport Fotoğrafı",
     diplomaUpload: "Diploma veya Lise Belgesi",
     diplomaSupplementUpload: "Diploma/Atestat Eki",

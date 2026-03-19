@@ -1244,16 +1244,17 @@ export default function AdminPage() {
   const renderFileAction = (url: string, label: string) => {
     if (isImageUrl(url)) {
       return (
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={() => {
             setImagePreviewLoading(true);
             setImagePreview({ url, label });
           }}
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700"
+          className="h-auto p-0 text-sm font-semibold text-blue-600 hover:bg-transparent hover:text-blue-700"
         >
           <Eye className="w-3.5 h-3.5" /> {t("admin.viewImage")}
-        </button>
+        </Button>
       );
     }
 
@@ -1365,15 +1366,16 @@ export default function AdminPage() {
         renderDetailCard(
           key,
           label,
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={() => openOriginalDocument(value)}
             disabled={openingDocumentId === value}
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-60"
+            className="h-auto p-0 text-sm font-semibold text-blue-600 hover:bg-transparent hover:text-blue-700 disabled:opacity-60"
           >
             <Eye className="w-3.5 h-3.5" />
             {openingDocumentId === value ? t("common.loading") : t("admin.viewOriginal")}
-          </button>,
+          </Button>,
         ),
       ];
     }
@@ -1721,8 +1723,10 @@ export default function AdminPage() {
             const Icon = tb.icon || FileText;
             const isActive = tab === tb.key;
             return (
-              <button
+              <Button
                 key={tb.key}
+                type="button"
+                variant={isActive ? "default" : "ghost"}
                 onClick={() => setTab(tb.key)}
                 className={cn(
                   "w-11 h-11 flex items-center justify-center rounded-full transition-all group relative z-10",
@@ -1733,7 +1737,7 @@ export default function AdminPage() {
                 <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[120] shadow-lg transition-opacity">
                   {tb.label}
                 </span>
-              </button>
+              </Button>
             );
           })}
         </nav>
@@ -1752,14 +1756,14 @@ export default function AdminPage() {
             <div className="flex items-center gap-4 text-slate-600 border-l border-slate-200 pl-6">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="relative text-slate-500 hover:text-black transition-colors w-10 h-10 rounded-full hover:bg-white flex items-center justify-center">
+                  <Button type="button" variant="ghost" size="icon" className="relative h-10 w-10 rounded-full text-slate-500 hover:bg-white hover:text-black">
                     <Bell className="w-5 h-5" />
                     {unreadNotifications > 0 && (
                       <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#ff6844] rounded-full border-2 border-white text-[10px] font-bold text-white flex items-center justify-center">
                         {Math.min(unreadNotifications, 9)}
                       </span>
                     )}
-                  </button>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="rounded-2xl bg-white p-2 border-slate-100 shadow-xl min-w-[320px] max-w-[360px]">
                   <div className="px-3 py-2 border-b border-slate-100">
@@ -1815,7 +1819,7 @@ export default function AdminPage() {
               </DropdownMenu>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-2 ml-2 rounded-full px-2 py-1 hover:bg-slate-100 transition-colors">
+                  <Button type="button" variant="ghost" className="ml-2 h-auto rounded-full px-2 py-1 hover:bg-slate-100">
                     <div className="flex flex-col items-end">
                       <span className="text-sm font-bold text-slate-800 leading-none">
                         {getAdminDisplayName(session)}
@@ -1831,7 +1835,7 @@ export default function AdminPage() {
                       </AvatarFallback>
                     </Avatar>
                     <ChevronDown className="w-4 h-4 text-slate-400" />
-                  </button>
+                  </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="rounded-2xl bg-white p-2 border-slate-100 shadow-xl min-w-[180px]">
                   <DropdownMenuItem
@@ -1916,30 +1920,32 @@ export default function AdminPage() {
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-1 space-y-4">
                   <div className="flex items-center gap-6 px-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
                       onClick={() => setDashboardPanel("stats")}
                       className={cn(
-                        "pb-1 text-[17px] transition-colors border-b-2",
+                        "h-auto rounded-none px-0 pb-1 text-[17px] transition-colors border-b-2 hover:bg-transparent",
                         dashboardPanel === "stats"
                           ? "font-extrabold text-slate-900 border-slate-900"
                           : "font-bold text-slate-400 border-transparent hover:text-slate-600",
                       )}
                     >
                       {t("admin.stats")}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
+                      variant="ghost"
                       onClick={() => setDashboardPanel("activity")}
                       className={cn(
-                        "pb-1 text-[17px] flex items-center gap-2 transition-colors border-b-2",
+                        "h-auto rounded-none px-0 pb-1 text-[17px] flex items-center gap-2 transition-colors border-b-2 hover:bg-transparent",
                         dashboardPanel === "activity"
                           ? "font-extrabold text-slate-900 border-slate-900"
                           : "font-bold text-slate-400 border-transparent hover:text-slate-600",
                       )}
                     >
                       <Grip className="w-4 h-4" /> {t("admin.activity")}
-                    </button>
+                    </Button>
                   </div>
                   <div className="bg-[#0f0f0f] text-white rounded-[2rem] p-8 h-[260px] flex flex-col justify-center shadow-md">
                     {dashboardLoading ? (
@@ -2025,8 +2031,8 @@ export default function AdminPage() {
                   <div className="flex flex-wrap items-center justify-between px-2 gap-4">
                     <h3 className="font-bold text-[17px] text-slate-800">{t("admin.clients")}</h3>
                     <div className="flex flex-wrap gap-5 text-xs font-bold text-slate-500">
-                      <button className="flex items-center gap-1.5 hover:text-slate-800 transition-colors"><Users className="w-4 h-4" /> {stats.allClients}</button>
-                      <button className="flex items-center gap-1.5 text-slate-800 transition-colors"><BarChart3 className="w-4 h-4" /> {t("admin.dashboard")}</button>
+                      <div className="flex items-center gap-1.5"><Users className="w-4 h-4" /> {stats.allClients}</div>
+                      <div className="flex items-center gap-1.5 text-slate-800"><BarChart3 className="w-4 h-4" /> {t("admin.dashboard")}</div>
                     </div>
                   </div>
                   <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex-1 h-[260px] overflow-auto flex flex-col">
@@ -2301,13 +2307,15 @@ export default function AdminPage() {
                       const isActive = selectedApp?.status === st;
                       const colors: Record<string, string> = { pending: 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500', processing: 'bg-blue-500 hover:bg-blue-600 text-white border-blue-500', completed: 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-500', rejected: 'bg-red-500 hover:bg-red-600 text-white border-red-500' };
                       return (
-                        <button
+                        <Button
                           key={st}
+                          type="button"
+                          variant={isActive ? "default" : "outline"}
                           onClick={() => { if (selectedApp) { updateStatus(selectedApp.id, st); setSelectedApp({...selectedApp, status: st}); } }}
-                          className={cn("px-4 py-2 text-xs font-bold rounded-md border transition-all", isActive ? colors[st] : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-50')}
+                          className={cn("h-auto px-4 py-2 text-xs font-bold rounded-md transition-all", isActive ? colors[st] : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300 hover:bg-slate-50')}
                         >
                           {t(`admin.${st}`)}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>

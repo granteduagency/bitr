@@ -63,9 +63,9 @@ export function DashboardLayout() {
           
           <div className="flex items-center gap-2 md:gap-4">
             {isRoot && (
-              <button className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white shadow-sm flex items-center justify-center hover:bg-slate-50 transition-colors border border-slate-100">
+              <Button type="button" variant="outline" size="icon" className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white shadow-sm hover:bg-slate-50 border-slate-100">
                 <Search className="w-5 h-5 text-slate-500" />
-              </button>
+              </Button>
             )}
             <InstallAppButton />
             <LanguageSwitcher />
@@ -85,8 +85,10 @@ export function DashboardLayout() {
             const isActive = location.pathname === item.path ||
               (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
             return (
-              <button
+              <Button
                 key={item.path}
+                type="button"
+                variant="ghost"
                 onClick={() => navigate(item.path)}
                 className={`relative flex items-center justify-center rounded-full transition-all duration-300 ${
                   isActive
@@ -95,7 +97,7 @@ export function DashboardLayout() {
                 }`}
               >
                 <item.icon className={`transition-all duration-200 ${isActive ? 'w-6 h-6' : 'w-5 h-5'}`} strokeWidth={isActive ? 2.2 : 1.8} />
-              </button>
+              </Button>
             );
           })}
         </div>
