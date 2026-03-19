@@ -6,6 +6,7 @@ import { PassportUploadField } from '@/components/shared/PassportUploadField';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import { notifyAdminNewApplication } from '@/lib/admin-push';
 import type { PassportUploadValue } from '@/lib/docupipe';
 import {
   buildUniversityFilterOptions,
@@ -184,7 +185,7 @@ export default function UniversitePage() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      await supabase.from('university_applications').insert({
+      const { data: application, error } = await supabase.from('university_applications').insert({
         client_id: cId,
         university_id: null,
         external_workspace_id: selectedUni?.workspaceId ?? null,
@@ -200,6 +201,10 @@ export default function UniversitePage() {
         passport_document_id: passportMeta?.documentId ?? null,
         passport_extraction: passportMeta?.extraction ?? null,
         ...form,
+      }).select('id').single();
+      if (error) throw error;
+      void notifyAdminNewApplication('universite', application.id).catch((notifyError) => {
+        console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch { toast({ title: t('common.error'), variant: 'destructive' }); } finally { setLoading(false); }

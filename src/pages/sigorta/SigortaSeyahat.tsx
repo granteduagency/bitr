@@ -5,6 +5,7 @@ import { TabSelector } from '@/components/shared/TabSelector';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { toast } from '@/hooks/use-toast';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -38,7 +39,15 @@ export default function SigortaSeyahat() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      await supabase.from('sigorta_applications').insert({ client_id: cId, type: 'seyahat', data: { ...form, idType } });
+      const { data: application, error } = await supabase
+        .from('sigorta_applications')
+        .insert({ client_id: cId, type: 'seyahat', data: { ...form, idType } })
+        .select('id')
+        .single();
+      if (error) throw error;
+      void notifyAdminNewApplication('sigorta', application.id).catch((notifyError) => {
+        console.error('Admin notify error:', notifyError);
+      });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch { toast({ title: t('common.error'), variant: 'destructive' }); } finally { setLoading(false); }
   };

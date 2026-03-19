@@ -8,6 +8,7 @@ import { TabSelector } from '@/components/shared/TabSelector';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import { notifyAdminNewApplication } from '@/lib/admin-push';
 import {
   passportSexToGender,
   type PassportExtractionData,
@@ -48,7 +49,7 @@ export default function SigortaSaglik() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      await supabase.from('sigorta_applications').insert({
+      const { data: application, error } = await supabase.from('sigorta_applications').insert({
         client_id: cId,
         type: 'saglik',
         data: {
@@ -57,6 +58,10 @@ export default function SigortaSaglik() {
           passport_document_id: passportMeta?.documentId ?? null,
           passport_extraction: passportMeta?.extraction ?? null,
         },
+      }).select('id').single();
+      if (error) throw error;
+      void notifyAdminNewApplication('sigorta', application.id).catch((notifyError) => {
+        console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch { toast({ title: t('common.error'), variant: 'destructive' }); } finally { setLoading(false); }

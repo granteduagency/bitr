@@ -6,6 +6,7 @@ import { FileUpload } from '@/components/shared/FileUpload';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { toast } from '@/hooks/use-toast';
 import { motion } from 'framer-motion';
 import { Briefcase, Plane } from 'lucide-react';
@@ -26,12 +27,15 @@ export default function CalismaForm() {
       const clientName = localStorage.getItem('client_name') || '';
       const clientPhone = localStorage.getItem('client_phone') || '';
       const clientId = await getOrCreateClient(clientName, clientPhone);
-      const { error } = await supabase.from('calisma_applications').insert({
+      const { data: application, error } = await supabase.from('calisma_applications').insert({
         client_id: clientId,
         type: type === 'yurt-ici' ? 'yurt_ici' : 'yurt_disi',
         documents_url: docs, notes,
-      });
+      }).select('id').single();
       if (error) throw error;
+      void notifyAdminNewApplication('calisma', application.id).catch((notifyError) => {
+        console.error('Admin notify error:', notifyError);
+      });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch (err) { console.error(err); toast({ title: t('common.error'), variant: 'destructive' }); }
     finally { setLoading(false); }

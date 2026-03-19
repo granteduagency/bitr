@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   getDocuPipeOriginalUrl,
@@ -8,6 +8,10 @@ import {
   toPassportExtractionData,
   type PassportExtractionData,
 } from "@/lib/docupipe";
+import {
+  ensureAdminPushSubscription,
+  removeAdminPushSubscription,
+} from "@/lib/admin-push";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase, uploadFile } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
@@ -220,7 +224,6 @@ export default function AdminPage() {
     completed: 0,
     today: 0,
   });
-  const hasRequestedNotificationPermission = useRef(false);
 
   useEffect(() => {
     supabase.auth.onAuthStateChange((_, s) => {
@@ -259,34 +262,44 @@ export default function AdminPage() {
       newPassword: "",
       confirmPassword: "",
     });
-  }, [openNotificationItem, session]);
+  }, [session]);
 
   useEffect(() => {
-    if (!session || hasRequestedNotificationPermission.current || typeof window === "undefined") {
+    if (!session) {
       return;
     }
 
-    hasRequestedNotificationPermission.current = true;
-    if ("Notification" in window && Notification.permission === "default") {
-      void Notification.requestPermission();
-    }
-  }, [openNotificationItem, session]);
+    ensureAdminPushSubscription({ requestPermission: false }).catch((error) => {
+      console.error("Push subscription error:", error);
+    });
+  }, [session]);
 
   const login = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    if (error)
+    if (error) {
       toast({
         title: t("common.error"),
         description: error.message,
         variant: "destructive",
       });
+      return;
+    }
+
+    setSession(data.session ?? null);
+
+    await ensureAdminPushSubscription({ requestPermission: true }).catch((pushError) => {
+      console.error("Push subscription error:", pushError);
+    });
   };
 
   const logout = async () => {
+    await removeAdminPushSubscription().catch((error) => {
+      console.error("Push unsubscribe error:", error);
+    });
     await supabase.auth.signOut();
     setSession(null);
     setNotifications([]);
@@ -698,41 +711,6 @@ export default function AdminPage() {
 
     let isActive = true;
 
-    const showSystemNotification = async (notification: AdminNotificationItem) => {
-      if (!("Notification" in window) || Notification.permission !== "granted") {
-        return;
-      }
-
-      const notificationUrl = `${window.location.origin}${buildAdminNotificationUrl(
-        notification.serviceTab,
-        notification.applicationId,
-      )}`;
-      const options = {
-        body: notification.description,
-        icon: "/pwa-192.png",
-        badge: "/pwa-192.png",
-        tag: notification.id,
-        data: { url: notificationUrl },
-      };
-
-      if ("serviceWorker" in navigator) {
-        const registration = await navigator.serviceWorker.ready;
-        await registration.showNotification(notification.title, options);
-        return;
-      }
-
-      const browserNotification = new Notification(notification.title, options);
-      browserNotification.onclick = () => {
-        window.focus();
-        void openNotificationItem(
-          notification.serviceTab,
-          notification.applicationId,
-          notification.id,
-        );
-        browserNotification.close();
-      };
-    };
-
     const channels = applicationTableEntries.map(([serviceTab, table]) =>
       supabase
         .channel(`admin-notifications-${table}`)
@@ -771,7 +749,6 @@ export default function AdminPage() {
               completed: prev.completed,
               today: prev.today + 1,
             }));
-            void showSystemNotification(notification);
           },
         )
         .subscribe(),
@@ -783,7 +760,7 @@ export default function AdminPage() {
         void supabase.removeChannel(channel);
       });
     };
-  }, [openNotificationItem, session, t]);
+  }, [session, t]);
 
   const updateStatus = async (id: string, status: string) => {
     if (!isServiceTab(tab)) return;

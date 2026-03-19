@@ -4,6 +4,7 @@ import { Button, Surface, TextField, TextArea, Label, Input, Spinner } from '@he
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { toast } from '@/hooks/use-toast';
 import { motion } from 'framer-motion';
 import { Scale } from 'lucide-react';
@@ -25,7 +26,15 @@ export default function HukukPage() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(form.full_name, form.phone);
-      await supabase.from('hukuk_applications').insert({ client_id: cId, ...form });
+      const { data: application, error } = await supabase
+        .from('hukuk_applications')
+        .insert({ client_id: cId, ...form })
+        .select('id')
+        .single();
+      if (error) throw error;
+      void notifyAdminNewApplication('hukuk', application.id).catch((notifyError) => {
+        console.error('Admin notify error:', notifyError);
+      });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch { toast({ title: t('common.error'), variant: 'destructive' }); } finally { setLoading(false); }
   };

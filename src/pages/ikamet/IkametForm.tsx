@@ -10,6 +10,7 @@ import { TabSelector } from '@/components/shared/TabSelector';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import { notifyAdminNewApplication } from '@/lib/admin-push';
 import type { PassportUploadValue } from '@/lib/docupipe';
 import { MessageCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -81,7 +82,7 @@ export default function IkametForm({ category, type }: IkametFormProps) {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      const { error } = await supabase.from('ikamet_applications').insert({
+      const { data: application, error } = await supabase.from('ikamet_applications').insert({
         client_id: cId,
         category,
         type,
@@ -93,8 +94,11 @@ export default function IkametForm({ category, type }: IkametFormProps) {
         supporter_passport_url: supporterType === 'yabanci' ? form.supporter_passport_url : '',
         has_insurance: form.has_insurance === 'yes',
         supporter_type: type === 'aile' ? supporterType : null,
-      });
+      }).select('id').single();
       if (error) throw error;
+      void notifyAdminNewApplication('ikamet', application.id).catch((notifyError) => {
+        console.error('Admin notify error:', notifyError);
+      });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch (err) { console.error(err); toast({ title: t('common.error'), variant: 'destructive' }); }
     finally { setLoading(false); }

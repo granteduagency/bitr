@@ -71,6 +71,31 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+self.addEventListener("push", (event) => {
+  let payload = {
+    title: "Yangi ariza",
+    body: "",
+    data: { url: "/admin" },
+  };
+
+  if (event.data) {
+    try {
+      payload = { ...payload, ...event.data.json() };
+    } catch {
+      payload.body = event.data.text();
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: "/pwa-192.png",
+      badge: "/pwa-192.png",
+      data: payload.data,
+    }),
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const targetUrl = event.notification?.data?.url || "/admin";

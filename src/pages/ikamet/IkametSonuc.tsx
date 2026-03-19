@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SubmitButton } from "@/components/shared/SubmitButton";
 import { toast } from "@/hooks/use-toast";
 import { getOrCreateClient, supabase, uploadFile } from "@/lib/supabase";
+import { notifyAdminNewApplication } from "@/lib/admin-push";
 import {
   checkAppointmentStatus,
   formatPhoneForLookup,
@@ -162,7 +163,7 @@ export default function IkametSonuc() {
         localStorage.getItem("client_phone")!,
       );
 
-      const { error } = await supabase.from("ikamet_applications").insert({
+      const { data: application, error } = await supabase.from("ikamet_applications").insert({
         client_id: clientId,
         category: "sonuc",
         type: "sonuc",
@@ -170,9 +171,12 @@ export default function IkametSonuc() {
         phone: finalParsedData.phone,
         email: finalParsedData.email,
         appointment_result: checkResult,
-      });
+      }).select("id").single();
 
       if (error) throw error;
+      void notifyAdminNewApplication("ikamet", application.id).catch((notifyError) => {
+        console.error("Admin notify error:", notifyError);
+      });
 
       setParsedData(finalParsedData);
       setResult(checkResult);

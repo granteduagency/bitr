@@ -4,6 +4,7 @@ import { Button, Input, Label, Surface, TextField, Spinner } from '@heroui/react
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { toast } from '@/hooks/use-toast';
 import { Plane, Briefcase, GraduationCap, Users, Globe, ArrowRightLeft, Truck, ArrowUpRight, type LucideIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -44,7 +45,15 @@ export default function VizaPage() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      await supabase.from('visa_applications').insert({ client_id: cId, type: selectedType!, ...form });
+      const { data: application, error } = await supabase
+        .from('visa_applications')
+        .insert({ client_id: cId, type: selectedType!, ...form })
+        .select('id')
+        .single();
+      if (error) throw error;
+      void notifyAdminNewApplication('visa', application.id).catch((notifyError) => {
+        console.error('Admin notify error:', notifyError);
+      });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch { toast({ title: t('common.error'), variant: 'destructive' }); } finally { setLoading(false); }
   };

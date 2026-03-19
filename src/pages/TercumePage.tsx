@@ -7,6 +7,7 @@ import { MultiSelect } from '@/components/shared/MultiSelect';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
+import { notifyAdminNewApplication } from '@/lib/admin-push';
 import type { PassportUploadValue } from '@/lib/docupipe';
 import { toast } from '@/hooks/use-toast';
 import { motion } from 'framer-motion';
@@ -45,12 +46,16 @@ export default function TercumePage() {
     e.preventDefault(); setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
-      await supabase.from('tercume_applications').insert({
+      const { data: application, error } = await supabase.from('tercume_applications').insert({
         client_id: cId, document_types: selectedDocs, from_language: fromLang,
         to_language: toLang,
         documents_url: selectedDocs.map((key) => docUrls[key]).filter(Boolean),
         passport_document_id: selectedDocs.includes('passport') ? passportMeta?.documentId ?? null : null,
         passport_extraction: selectedDocs.includes('passport') ? passportMeta?.extraction ?? null : null,
+      }).select('id').single();
+      if (error) throw error;
+      void notifyAdminNewApplication('tercume', application.id).catch((notifyError) => {
+        console.error('Admin notify error:', notifyError);
       });
       setSubmitted(true); toast({ title: t('common.success') });
     } catch { toast({ title: t('common.error'), variant: 'destructive' }); } finally { setLoading(false); }
