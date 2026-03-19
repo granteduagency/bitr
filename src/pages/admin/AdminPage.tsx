@@ -36,6 +36,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import {
   Dialog,
@@ -208,6 +209,10 @@ export default function AdminPage() {
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ url: string; label: string } | null>(null);
+  const [imagePreviewLoading, setImagePreviewLoading] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
     fullName: "",
     avatarUrl: "",
@@ -643,10 +648,17 @@ export default function AdminPage() {
   };
 
   const fetchClients = async () => {
-    const { data: d } = await supabase
+    const { data: d, error } = await supabase
       .from("clients")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Fetch clients error:", error);
+      setClients([]);
+      return;
+    }
+
     setClients(d || []);
   };
 
@@ -681,14 +693,51 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!session) return;
-    if (tab === "dashboard") {
-      fetchStats();
-      fetchClients();
-    } else if (tab === "clients") {
-      fetchClients();
-    } else if (isServiceTab(tab)) {
-      fetchData(tab);
-    }
+
+    let isActive = true;
+
+    const loadCurrentTab = async () => {
+      if (tab === "dashboard") {
+        setDashboardLoading(true);
+        try {
+          await Promise.all([fetchStats(), fetchClients()]);
+        } finally {
+          if (isActive) {
+            setDashboardLoading(false);
+          }
+        }
+        return;
+      }
+
+      if (tab === "clients") {
+        setClientsLoading(true);
+        try {
+          await fetchClients();
+        } finally {
+          if (isActive) {
+            setClientsLoading(false);
+          }
+        }
+        return;
+      }
+
+      if (isServiceTab(tab)) {
+        setDataLoading(true);
+        try {
+          await fetchData(tab);
+        } finally {
+          if (isActive) {
+            setDataLoading(false);
+          }
+        }
+      }
+    };
+
+    void loadCurrentTab();
+
+    return () => {
+      isActive = false;
+    };
   }, [session, tab]);
 
   useEffect(() => {
@@ -934,7 +983,10 @@ export default function AdminPage() {
       return (
         <button
           type="button"
-          onClick={() => setImagePreview({ url, label })}
+          onClick={() => {
+            setImagePreviewLoading(true);
+            setImagePreview({ url, label });
+          }}
           className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700"
         >
           <Eye className="w-3.5 h-3.5" /> {t("admin.viewImage")}
@@ -959,6 +1011,7 @@ export default function AdminPage() {
       setOpeningDocumentId(documentId);
       const url = await getDocuPipeOriginalUrl(documentId);
       if (isImageUrl(url)) {
+        setImagePreviewLoading(true);
         setImagePreview({ url, label: t("admin.viewOriginal") });
       } else {
         window.open(url, "_blank", "noopener,noreferrer");
@@ -1176,8 +1229,75 @@ export default function AdminPage() {
         </span>,
         isWideDetailKey(field.key, field.key, value),
       ),
-    ];
+      ];
   }
+
+  const renderAdminStatCardSkeleton = (key: string) => (
+    <div
+      key={key}
+      className="relative p-6 rounded-3xl min-h-[170px] bg-white/70 border border-slate-100 shadow-sm"
+    >
+      <div className="flex h-full flex-col items-center justify-center">
+        <Skeleton className="h-10 w-10 rounded-full bg-white" />
+        <Skeleton className="mt-4 h-8 w-20 rounded-full bg-white" />
+        <Skeleton className="mt-3 h-3 w-24 rounded-full bg-white" />
+      </div>
+    </div>
+  );
+
+  const renderDashboardClientSkeleton = (key: string) => (
+    <div
+      key={key}
+      className="flex items-center rounded-2xl bg-[#f5f4f2] px-4 py-3"
+    >
+      <div className="w-[30%] pr-2">
+        <Skeleton className="h-4 w-24 rounded-full" />
+      </div>
+      <div className="w-[25%]">
+        <Skeleton className="h-4 w-20 rounded-full" />
+      </div>
+      <div className="w-[20%]">
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </div>
+      <div className="w-[25%]">
+        <Skeleton className="h-4 w-16 rounded-full" />
+      </div>
+      <div className="flex w-10 justify-end">
+        <Skeleton className="h-[18px] w-9 rounded-full" />
+      </div>
+    </div>
+  );
+
+  const renderAdminTableSkeletonRow = (key: string, showIndex = true, showStatus = true, showActions = true) => (
+    <TableRow key={key} className="border-b border-slate-50 last:border-0">
+      {showIndex && (
+        <TableCell className="pl-8">
+          <Skeleton className="mx-auto h-4 w-4 rounded-full" />
+        </TableCell>
+      )}
+      <TableCell className="py-4">
+        <Skeleton className="h-4 w-28 rounded-full" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-24 rounded-full" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-20 rounded-full" />
+      </TableCell>
+      {showStatus && (
+        <TableCell>
+          <Skeleton className="mx-auto h-6 w-20 rounded-full" />
+        </TableCell>
+      )}
+      {showActions && (
+        <TableCell className="pr-8">
+          <div className="flex justify-end">
+            <Skeleton className="h-8 w-24 rounded-full" />
+          </div>
+        </TableCell>
+      )}
+    </TableRow>
+  );
 
   if (loading)
     return (
@@ -1487,7 +1607,8 @@ export default function AdminPage() {
                   <Clock className="w-4 h-4" /> {new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
                 </div>
                 <div className="flex items-center gap-2 hover:bg-black/5 px-3 py-1.5 rounded-xl transition-colors text-slate-800 cursor-default">
-                  <BarChart3 className="w-4 h-4 text-slate-400" /> {stats.total}
+                  <BarChart3 className="w-4 h-4 text-slate-400" />
+                  {dashboardLoading ? <Skeleton className="h-4 w-8 rounded-full" /> : stats.total}
                 </div>
               </div>
             )}
@@ -1497,7 +1618,7 @@ export default function AdminPage() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
               {/* Bento Grid */}
               <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {statCardsData.map((s, i) => (
+                {dashboardLoading ? Array.from({ length: 5 }, (_, i) => renderAdminStatCardSkeleton(`dashboard-stat-${i}`)) : statCardsData.map((s, i) => (
                   <motion.div
                     key={i}
                     initial={{ opacity: 0, scale: 0.95 }}
@@ -1543,32 +1664,43 @@ export default function AdminPage() {
                     </button>
                   </div>
                   <div className="bg-[#0f0f0f] text-white rounded-[2rem] p-8 h-[260px] flex flex-col justify-center shadow-md">
-                    <div className="grid grid-cols-2 gap-y-8 gap-x-6">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 text-[#4ade80] text-xl font-black tracking-tight font-heading">
-                          <Users className="w-5 h-5" /> {clients.length}
-                        </div>
-                        <p className="text-slate-400 text-xs font-semibold">{t("admin.clients")}</p>
+                    {dashboardLoading ? (
+                      <div className="grid grid-cols-2 gap-y-8 gap-x-6">
+                        {Array.from({ length: 4 }, (_, index) => (
+                          <div key={index} className="flex flex-col gap-2">
+                            <Skeleton className="h-6 w-16 rounded-full bg-white/10" />
+                            <Skeleton className="h-3 w-24 rounded-full bg-white/10" />
+                          </div>
+                        ))}
                       </div>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 text-[#f87171] text-xl font-black tracking-tight font-heading">
-                          <Clock className="w-5 h-5" /> {stats.pending}
+                    ) : (
+                      <div className="grid grid-cols-2 gap-y-8 gap-x-6">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 text-[#4ade80] text-xl font-black tracking-tight font-heading">
+                            <Users className="w-5 h-5" /> {clients.length}
+                          </div>
+                          <p className="text-slate-400 text-xs font-semibold">{t("admin.clients")}</p>
                         </div>
-                        <p className="text-slate-400 text-xs font-semibold">{t("admin.pendingApplications")}</p>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 text-[#4ade80] text-xl font-black tracking-tight font-heading">
-                          <CheckCircle className="w-5 h-5" /> {stats.completed}
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 text-[#f87171] text-xl font-black tracking-tight font-heading">
+                            <Clock className="w-5 h-5" /> {stats.pending}
+                          </div>
+                          <p className="text-slate-400 text-xs font-semibold">{t("admin.pendingApplications")}</p>
                         </div>
-                        <p className="text-slate-400 text-xs font-semibold">{t("admin.completedApplications")}</p>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 text-slate-300 text-xl font-black tracking-tight font-heading">
-                          <ArrowUpRight className="w-5 h-5 rotate-45 text-slate-600" /> {stats.today}
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 text-[#4ade80] text-xl font-black tracking-tight font-heading">
+                            <CheckCircle className="w-5 h-5" /> {stats.completed}
+                          </div>
+                          <p className="text-slate-400 text-xs font-semibold">{t("admin.completedApplications")}</p>
                         </div>
-                        <p className="text-slate-400 text-xs font-semibold">{t("admin.todayApplications")}</p>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 text-slate-300 text-xl font-black tracking-tight font-heading">
+                            <ArrowUpRight className="w-5 h-5 rotate-45 text-slate-600" /> {stats.today}
+                          </div>
+                          <p className="text-slate-400 text-xs font-semibold">{t("admin.todayApplications")}</p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 
@@ -1589,7 +1721,9 @@ export default function AdminPage() {
                       <div className="w-10"></div>
                     </div>
                     <div className="space-y-2">
-                       {clients.length === 0 ? (
+                       {dashboardLoading ? (
+                          Array.from({ length: 3 }, (_, index) => renderDashboardClientSkeleton(`dashboard-client-${index}`))
+                       ) : clients.length === 0 ? (
                           <div className="text-center py-8 text-sm font-medium text-slate-500">{t("common.noData")}</div>
                        ) : clients.slice(0, 3).map((c, i) => (
                         <div key={c.id} className="flex items-center px-4 py-3 bg-[#f5f4f2] hover:bg-[#eae8e6] transition-colors rounded-2xl text-[13px] font-bold text-slate-800">
@@ -1722,9 +1856,15 @@ export default function AdminPage() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                <div className="px-8 pt-7 pb-4 border-b border-slate-50">
                  <h3 className="text-xl font-bold text-slate-900 font-heading">
-                    {getTabLabel(tab)}
+                     {getTabLabel(tab)}
                  </h3>
-                 <p className="text-slate-400 text-sm mt-0.5">{data.length > 0 ? `${data.length} ${t('admin.totalApplications')}` : ''}</p>
+                 <p className="text-slate-400 text-sm mt-0.5">
+                   {(tab === 'clients' ? clientsLoading : dataLoading)
+                     ? ''
+                     : (tab === 'clients' ? clients.length : data.length) > 0
+                       ? `${tab === 'clients' ? clients.length : data.length} ${t('admin.totalApplications')}`
+                       : ''}
+                 </p>
                </div>
                
                <Table>
@@ -1739,13 +1879,21 @@ export default function AdminPage() {
                    </TableRow>
                  </TableHeader>
                  <TableBody>
-                   {tab === 'clients' ? clients.map((c) => (
+                   {tab === 'clients' && clientsLoading ? (
+                     Array.from({ length: 5 }, (_, index) => renderAdminTableSkeletonRow(`clients-loading-${index}`, false, false, false))
+                   ) : tab === 'clients' ? clients.length === 0 ? (
+                     <TableRow>
+                       <TableCell colSpan={3} className="text-center text-slate-400 py-12">{t('common.noData')}</TableCell>
+                     </TableRow>
+                   ) : clients.map((c) => (
                        <TableRow key={c.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
                        <TableCell className="font-bold text-slate-900 py-4 pl-8">{c.name}</TableCell>
                        <TableCell className="text-slate-500 font-medium">{c.phone}</TableCell>
                        <TableCell className="text-slate-400 font-medium">{formatNullableDate(c.created_at)}</TableCell>
                      </TableRow>
-                   )) : data.length === 0 ? (
+                   )) : dataLoading ? (
+                     Array.from({ length: 5 }, (_, index) => renderAdminTableSkeletonRow(`data-loading-${index}`))
+                   ) : data.length === 0 ? (
                      <TableRow>
                        <TableCell colSpan={6} className="text-center text-slate-400 py-12">{t('common.noData')}</TableCell>
                      </TableRow>
@@ -1835,7 +1983,15 @@ export default function AdminPage() {
               </div>
             </DialogContent>
           </Dialog>
-          <Dialog open={!!imagePreview} onOpenChange={(open) => !open && setImagePreview(null)}>
+          <Dialog
+            open={!!imagePreview}
+            onOpenChange={(open) => {
+              if (!open) {
+                setImagePreview(null);
+                setImagePreviewLoading(false);
+              }
+            }}
+          >
             <DialogContent className="max-w-4xl bg-white p-4 rounded-2xl border border-slate-200 shadow-2xl">
               {imagePreview && (
                 <div className="space-y-3">
@@ -1845,11 +2001,22 @@ export default function AdminPage() {
                       {t("admin.imagePreview")}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-slate-100 p-3 flex items-center justify-center max-h-[78vh] overflow-auto">
+                  <div className="relative flex h-[68vh] min-h-[420px] items-center justify-center overflow-hidden rounded-2xl bg-slate-100 p-3">
+                    {imagePreviewLoading && (
+                      <div className="absolute inset-3 flex flex-col gap-3">
+                        <Skeleton className="h-full w-full rounded-xl bg-slate-200/80" />
+                        <Skeleton className="h-3 w-32 rounded-full bg-slate-200/80" />
+                      </div>
+                    )}
                     <img
                       src={imagePreview.url}
                       alt={imagePreview.label}
-                      className="max-h-[72vh] w-auto max-w-full object-contain rounded-xl"
+                      onLoad={() => setImagePreviewLoading(false)}
+                      onError={() => setImagePreviewLoading(false)}
+                      className={cn(
+                        "max-h-full w-auto max-w-full rounded-xl object-contain transition-opacity duration-200",
+                        imagePreviewLoading ? "opacity-0" : "opacity-100",
+                      )}
                     />
                   </div>
                 </div>

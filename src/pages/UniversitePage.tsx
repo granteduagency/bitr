@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Button, Input, Label, Surface, TextField, Spinner } from '@heroui/react';
+import { Button, Input, Label, Surface, TextField } from '@heroui/react';
 import { FileUpload } from '@/components/shared/FileUpload';
 import { PassportUploadField } from '@/components/shared/PassportUploadField';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
 import type { PassportUploadValue } from '@/lib/docupipe';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   buildUniversityFilterOptions,
   fetchUniversityCatalog,
@@ -35,6 +36,47 @@ const EMPTY_FILTERS: UniversityCatalogFilters = {
   program: '',
   language: '',
 };
+
+const UniversitySearchSkeleton = () => (
+  <div className="space-y-6">
+    <Skeleton className="h-5 w-56 rounded-full" />
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {Array.from({ length: 4 }, (_, index) => (
+        <div key={index} className="space-y-2">
+          <Skeleton className="h-4 w-24 rounded-full" />
+          <Skeleton className="h-11 w-full rounded-2xl" />
+        </div>
+      ))}
+    </div>
+    <div className="flex flex-col gap-3 md:flex-row">
+      <Skeleton className="h-11 w-full rounded-2xl" />
+      <Skeleton className="h-11 w-full rounded-2xl" />
+    </div>
+  </div>
+);
+
+const UniversityResultsSkeleton = () => (
+  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    {Array.from({ length: 4 }, (_, index) => (
+      <div
+        key={index}
+        className="min-h-[160px] rounded-[1.5rem] border border-slate-100 bg-white/70 p-5 shadow-sm"
+      >
+        <div className="flex items-start gap-3">
+          <Skeleton className="h-11 w-11 shrink-0 rounded-2xl" />
+          <div className="min-w-0 flex-1 space-y-3">
+            <Skeleton className="h-5 w-40 rounded-full" />
+            <Skeleton className="h-4 w-32 rounded-full" />
+            <div className="flex flex-wrap gap-2">
+              <Skeleton className="h-7 w-28 rounded-full" />
+              <Skeleton className="h-7 w-24 rounded-full" />
+            </div>
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 export default function UniversitePage() {
   const { t } = useTranslation();
@@ -255,7 +297,9 @@ export default function UniversitePage() {
       <div className="flex justify-between items-start gap-4">
         <div>
           <h2 className="font-heading text-2xl font-extrabold text-slate-900">{t('universite.results')}</h2>
-          {workspaceName ? (
+          {catalogLoading ? (
+            <Skeleton className="mt-2 h-4 w-48 rounded-full" />
+          ) : workspaceName ? (
             <p className="text-slate-400 text-sm mt-1">
               {t('universite.workspaceLabel')}: {workspaceName}
             </p>
@@ -263,7 +307,9 @@ export default function UniversitePage() {
         </div>
         <button onClick={() => setStep('search')} className="text-sm text-slate-500 hover:text-slate-900 font-medium transition-colors">{t('common.back')}</button>
       </div>
-      {filteredUniversities.length === 0 ? (
+      {catalogLoading ? (
+        <UniversityResultsSkeleton />
+      ) : filteredUniversities.length === 0 ? (
         <p className="text-slate-400 py-12 text-center">{t('common.noData')}</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -339,17 +385,14 @@ export default function UniversitePage() {
         </div>
       </div>
       <Surface className="rounded-md p-6 md:p-8 space-y-6 bg-white/50">
-        {workspaceName ? (
+        {!catalogLoading && workspaceName ? (
           <p className="text-sm text-slate-500">
             {t('universite.workspaceLabel')}: <span className="font-semibold text-slate-700">{workspaceName}</span>
           </p>
         ) : null}
 
         {catalogLoading ? (
-          <div className="py-10 flex flex-col items-center justify-center gap-3 text-slate-500">
-            <Spinner size="sm" />
-            <p>{t('universite.catalogLoading')}</p>
-          </div>
+          <UniversitySearchSkeleton />
         ) : catalogError ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {catalogError}
