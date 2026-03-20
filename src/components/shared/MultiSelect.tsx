@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Label } from '@heroui/react';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface MultiSelectOption {
   value: string;
@@ -15,6 +16,8 @@ interface MultiSelectProps {
   value: string[];
   onChange: (value: string[]) => void;
   selectAllLabel?: string;
+  className?: string;
+  triggerClassName?: string;
 }
 
 export function MultiSelect({
@@ -24,6 +27,8 @@ export function MultiSelect({
   value,
   onChange,
   selectAllLabel = 'Hammasini tanlash',
+  className,
+  triggerClassName,
 }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -48,13 +53,16 @@ export function MultiSelect({
   };
 
   return (
-    <div className="flex flex-col gap-1.5" ref={ref}>
+    <div className={cn("flex flex-col gap-1.5", className)} ref={ref}>
       <Label className="text-sm font-medium">{label}</Label>
       <div className="relative">
         <Button
           type="button"
-          variant="secondary"
-          className="w-full justify-between text-left font-normal"
+          variant="outline"
+          className={cn(
+            "w-full justify-between border border-slate-300 bg-white text-left font-normal hover:bg-slate-50",
+            triggerClassName,
+          )}
           onClick={() => setOpen(o => !o)}
         >
           <span className={value.length > 0 ? 'text-foreground' : 'text-muted'}>

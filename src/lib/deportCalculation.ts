@@ -1,7 +1,7 @@
 export interface DeportResult {
   violationDays: number;
   penaltyAmount: number;
-  deportDuration: string;
+  deportDuration: "" | "ban1Month" | "ban3Months" | "ban1Year" | "ban5Years";
   hasViolation: boolean;
 }
 
@@ -22,23 +22,23 @@ export function calculateDeport(entryDate: Date, checkDate: Date): DeportResult 
   }
 
   let penaltyAmount = 0;
-  let deportDuration = '';
+  let deportDuration: DeportResult["deportDuration"] = "";
 
   if (overstayDays <= 10) {
     penaltyAmount = 3000;
-    deportDuration = '';
+    deportDuration = "";
   } else if (overstayDays <= 30) {
     penaltyAmount = 5000;
-    deportDuration = '1 ay giriş yasağı';
+    deportDuration = "ban1Month";
   } else if (overstayDays <= 90) {
     penaltyAmount = 8000;
-    deportDuration = '3 ay giriş yasağı';
+    deportDuration = "ban3Months";
   } else if (overstayDays <= 180) {
     penaltyAmount = 15000;
-    deportDuration = '1 yıl giriş yasağı';
+    deportDuration = "ban1Year";
   } else {
     penaltyAmount = 20000;
-    deportDuration = '5 yıl giriş yasağı';
+    deportDuration = "ban5Years";
   }
 
   return {

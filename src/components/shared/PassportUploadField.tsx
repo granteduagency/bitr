@@ -15,6 +15,7 @@ interface PassportUploadFieldProps {
   accept?: string;
   value?: string;
   onChange: (value: PassportUploadValue | null) => void;
+  required?: boolean;
 }
 
 export function PassportUploadField({
@@ -22,6 +23,7 @@ export function PassportUploadField({
   accept = "image/*,.pdf",
   value,
   onChange,
+  required = false,
 }: PassportUploadFieldProps) {
   const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
@@ -35,13 +37,11 @@ export function PassportUploadField({
 
     setUploading(true);
     try {
-      const [storageUrl, extraction] = await Promise.all([
-        uploadFile(file),
-        extractPassportFromFile(file),
-      ]);
+      const extraction = await extractPassportFromFile(file);
+      const storageUrl = await uploadFile(file);
 
       if (!storageUrl) {
-        throw new Error("Passport file upload failed.");
+        throw new Error(t("common.passportUploadFailed"));
       }
 
       onChange({
@@ -75,11 +75,14 @@ export function PassportUploadField({
     }
   }, [onChange]);
 
-  const formatHint = accept.includes("pdf") ? "PDF / IMG" : "IMG";
+  const formatHint = accept.includes("pdf") ? t("common.pdfOrImage") : "";
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label className="text-sm font-medium">{label}</Label>
+      <Label className="text-sm font-medium">
+        {label}
+        {required ? <span className="ml-1 text-red-500">*</span> : null}
+      </Label>
       <div className="flex items-center gap-2">
         {uploaded ? (
           <>
@@ -88,7 +91,7 @@ export function PassportUploadField({
               variant="secondary"
               size="sm"
               disabled
-              className="pointer-events-none"
+              className="pointer-events-none border border-slate-300 bg-white"
             >
               <CheckCircle className="h-4 w-4 text-[#3A8A56]" />
               <span className="truncate max-w-[180px]">
@@ -100,7 +103,8 @@ export function PassportUploadField({
               variant="secondary"
               size="icon"
               onClick={handleRemove}
-              aria-label="Remove"
+              aria-label={t("common.remove")}
+              className="border border-slate-300 bg-white hover:bg-slate-50"
             >
               <X className="h-3.5 w-3.5" />
             </Button>
@@ -112,6 +116,7 @@ export function PassportUploadField({
             size="sm"
             disabled={uploading}
             onClick={() => inputRef.current?.click()}
+            className="border border-slate-300 bg-white hover:bg-slate-50"
           >
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {uploading ? t("common.loading") : label}

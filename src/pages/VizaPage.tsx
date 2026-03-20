@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input, Label, Surface, TextField } from '@heroui/react';
+import { CountrySelectField } from '@/components/shared/CountrySelectField';
 import { Button } from '@/components/ui/button';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { recordStoredClientApplication } from '@/lib/client-tracking';
+import { getCountryNameFromCode } from '@/lib/countries';
 import { toast } from '@/hooks/use-toast';
 import { Plane, Briefcase, GraduationCap, Users, Globe, ArrowRightLeft, Truck, ArrowUpRight, type LucideIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -31,7 +33,7 @@ const VIZA_COLORS = [
 ];
 
 export default function VizaPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [selectedType, setSelectedType] = useState<VizaType | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -48,9 +50,14 @@ export default function VizaPage() {
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
       const applicationId = crypto.randomUUID();
+      const submissionForm = {
+        ...form,
+        from_country: getCountryNameFromCode(form.from_country, i18n.language),
+        to_country: getCountryNameFromCode(form.to_country, i18n.language),
+      };
       const { error } = await supabase
         .from('visa_applications')
-        .insert({ id: applicationId, client_id: cId, type: selectedType!, ...form });
+        .insert({ id: applicationId, client_id: cId, type: selectedType!, ...submissionForm });
       if (error) throw error;
       await recordStoredClientApplication({
         route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/viza',
@@ -58,8 +65,8 @@ export default function VizaPage() {
         referenceId: applicationId,
         details: {
           type: selectedType,
-          fromCountry: form.from_country,
-          toCountry: form.to_country,
+          fromCountry: submissionForm.from_country,
+          toCountry: submissionForm.to_country,
           travelDate: form.travel_date,
         },
       }).catch((trackingError) => {
@@ -93,14 +100,18 @@ export default function VizaPage() {
         <form onSubmit={handleSubmit}>
           <Surface className="rounded-md p-6 md:p-8 space-y-6 bg-white/50">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <TextField fullWidth isRequired name="from_country" variant="secondary" onChange={v => u('from_country', v)} value={form.from_country}>
-                <Label>{t('viza.fromCountry')}</Label>
-                <Input placeholder="Qaysi mamlakatdan" />
-              </TextField>
-              <TextField fullWidth isRequired name="to_country" variant="secondary" onChange={v => u('to_country', v)} value={form.to_country}>
-                <Label>{t('viza.toCountry')}</Label>
-                <Input placeholder="Qaysi mamlakatga" />
-              </TextField>
+              <CountrySelectField
+                label={t('viza.fromCountry')}
+                required
+                value={form.from_country}
+                onChange={(value) => u('from_country', value)}
+              />
+              <CountrySelectField
+                label={t('viza.toCountry')}
+                required
+                value={form.to_country}
+                onChange={(value) => u('to_country', value)}
+              />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <TextField fullWidth isRequired name="travel_date" type="date" variant="secondary" onChange={v => u('travel_date', v)} value={form.travel_date}>

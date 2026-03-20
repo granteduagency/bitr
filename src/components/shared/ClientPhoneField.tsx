@@ -177,7 +177,7 @@ export function ClientPhoneField({
 }: ClientPhoneFieldProps) {
   const displayNames = React.useMemo(
     () =>
-      new Intl.DisplayNames([locale === "tr" ? "tr" : locale === "uz" ? "uz" : "en"], {
+      new Intl.DisplayNames([locale === "uz" ? "uz" : "tr"], {
         type: "region",
       }),
     [locale],
@@ -185,10 +185,8 @@ export function ClientPhoneField({
 
   const text = React.useMemo(
     () => ({
-      searchPlaceholder:
-        locale === "tr" ? "Ülke ara..." : locale === "uz" ? "Davlat qidiring..." : "Search country...",
-      emptyText:
-        locale === "tr" ? "Ülke bulunamadı." : locale === "uz" ? "Davlat topilmadi." : "No country found.",
+      searchPlaceholder: locale === "uz" ? "Davlat qidiring..." : "Ülke ara...",
+      emptyText: locale === "uz" ? "Davlat topilmadi." : "Ülke bulunamadı.",
     }),
     [locale],
   );

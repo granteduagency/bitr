@@ -74,7 +74,7 @@ export function DashboardLayout() {
       </header>
 
       {/* Content */}
-      <main className="px-4 md:px-8 xl:px-12 py-2 md:py-4 max-w-[1400px] mx-auto w-full">
+      <main className="px-4 pb-20 md:px-8 md:py-4 md:pb-4 xl:px-12 max-w-[1400px] mx-auto w-full">
         <Outlet />
       </main>
 

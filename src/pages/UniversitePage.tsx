@@ -22,6 +22,7 @@ import {
   type UniversityCatalogFilters,
   type UniversityCatalogUniversity,
 } from '@/lib/university-catalog';
+import { validatePortraitPhoto } from '@/lib/photo-validation';
 import { toast } from '@/hooks/use-toast';
 import { GraduationCap, ArrowUpRight, Globe2, MapPin } from 'lucide-react';
 import {
@@ -60,8 +61,8 @@ const UniversitySearchSkeleton = () => (
       ))}
     </div>
     <div className="flex flex-col gap-3 md:flex-row">
-      <Skeleton className="h-11 w-full rounded-2xl" />
-      <Skeleton className="h-11 w-full rounded-2xl" />
+      <Skeleton className="h-11 w-44 rounded-2xl" />
+      <Skeleton className="h-11 w-44 rounded-2xl" />
     </div>
   </div>
 );
@@ -110,7 +111,7 @@ function renderSelectItems(
 }
 
 export default function UniversitePage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [step, setStep] = useState<'search' | 'results' | 'apply'>('search');
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -268,8 +269,51 @@ export default function UniversitePage() {
 
   if (submitted) return <SuccessScreen />;
 
+  if (step === 'search' && catalogLoading) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-14 w-14 rounded-2xl" />
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-52 rounded-full" />
+            <Skeleton className="h-4 w-72 rounded-full" />
+          </div>
+        </div>
+        <Surface className="rounded-md p-6 md:p-8 space-y-6 bg-white/50">
+          <UniversitySearchSkeleton />
+        </Surface>
+      </motion.div>
+    );
+  }
+
   const handleApply = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault();
+
+    const missingFields: string[] = [];
+    if (!form.passport_url) {
+      missingFields.push(t('universite.passportUpload'));
+    }
+    if (!form.photo_url) {
+      missingFields.push(t('universite.photoUpload'));
+    }
+
+    if (missingFields.length > 0) {
+      const formatter = new Intl.ListFormat(
+        i18n.language.startsWith('uz') ? 'uz' : 'tr',
+        { style: 'long', type: 'conjunction' },
+      );
+
+      toast({
+        title: t('common.error'),
+        description: t('common.missingFieldsDescription', {
+          fields: formatter.format(missingFields),
+        }),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
       const applicationId = crypto.randomUUID();
@@ -330,6 +374,7 @@ export default function UniversitePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <PassportUploadField
               label={t('universite.passportUpload')}
+              required
               onChange={(value) => {
                 setPassportMeta(value);
                 u('passport_url', value?.storageUrl || '');
@@ -339,7 +384,13 @@ export default function UniversitePage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FileUpload label={t('universite.diplomaSupplementUpload')} onUpload={url => u('diploma_supplement_url', url)} />
-            <FileUpload label={t('universite.photoUpload')} onUpload={url => u('photo_url', url)} accept="image/*" />
+            <FileUpload
+              label={t('universite.photoUpload')}
+              required
+              onUpload={url => u('photo_url', url)}
+              accept="image/*"
+              validateFile={validatePortraitPhoto}
+            />
           </div>
           <TextField fullWidth isRequired name="phone" type="tel" variant="secondary" onChange={v => u('phone', v)} value={form.phone}>
             <Label>{t('form.phone')}</Label>
@@ -472,9 +523,7 @@ export default function UniversitePage() {
           </p>
         ) : null}
 
-        {catalogLoading ? (
-          <UniversitySearchSkeleton />
-        ) : catalogError ? (
+        {catalogError ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {catalogError}
           </div>
@@ -540,9 +589,22 @@ export default function UniversitePage() {
                 </Select>
               </div>
             </div>
-            <div className="flex flex-col md:flex-row gap-3">
-              <Button type="button" onClick={openResults} disabled={!canSearch} className="w-full">{t('universite.searchBtn')}</Button>
-              <Button type="button" variant="secondary" onClick={clearSearch} className="w-full">{t('universite.clearFilters')}</Button>
+            <div className="flex flex-col gap-3 md:flex-row">
+              <Button
+                type="button"
+                onClick={openResults}
+                disabled={!canSearch}
+                className="h-11 w-fit rounded-2xl bg-black px-6 font-semibold text-white hover:bg-black/90"
+              >
+                {t('universite.searchBtn')}
+              </Button>
+              <Button
+                type="button"
+                onClick={clearSearch}
+                className="h-11 w-fit rounded-2xl bg-black px-6 font-semibold text-white hover:bg-black/90"
+              >
+                {t('universite.clearFilters')}
+              </Button>
             </div>
           </>
         )}

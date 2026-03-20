@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { useEffect, useMemo, useState } from "react";
 import {
   MapPin,
   Phone,
@@ -10,6 +11,12 @@ import {
   Facebook,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import {
+  DEFAULT_CONTACT_SETTINGS,
+  fetchContactSettings,
+  getLocalizedContactSettings,
+  type ContactSettingsRow,
+} from "@/lib/contact-settings";
 
 const CONTACT_COLORS = [
   { bg: "#F5D5D5", color: "#B85555" },
@@ -26,26 +33,64 @@ const SOCIAL_ITEMS = [
 ];
 
 export default function IletisimPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [contactSettings, setContactSettings] = useState<ContactSettingsRow>(
+    DEFAULT_CONTACT_SETTINGS,
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    fetchContactSettings()
+      .then((data) => {
+        if (mounted) {
+          setContactSettings(data);
+        }
+      })
+      .catch((error) => {
+        console.error("Contact settings load error:", error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const localizedContent = useMemo(
+    () => getLocalizedContactSettings(contactSettings, i18n.language),
+    [contactSettings, i18n.language],
+  );
 
   const items = [
     {
       icon: MapPin,
       label: t("iletisim.address"),
-      value: t("iletisim.addressValue"),
+      value: localizedContent.address,
     },
     {
       icon: Phone,
       label: t("iletisim.phone"),
-      value: t("iletisim.phoneValue"),
+      value: localizedContent.phone,
     },
-    { icon: Mail, label: t("iletisim.email"), value: t("iletisim.emailValue") },
+    { icon: Mail, label: t("iletisim.email"), value: localizedContent.email },
     {
       icon: Clock,
       label: t("iletisim.workingHours"),
-      value: t("iletisim.workingHoursValue"),
+      value: localizedContent.workingHours,
     },
   ];
+
+  const socialItems = SOCIAL_ITEMS.map((item) => ({
+    ...item,
+    href:
+      item.label === "WhatsApp"
+        ? localizedContent.socialLinks.whatsapp
+        : item.label === "Telegram"
+          ? localizedContent.socialLinks.telegram
+          : item.label === "Instagram"
+            ? localizedContent.socialLinks.instagram
+            : localizedContent.socialLinks.facebook,
+  }));
 
   return (
     <div className="space-y-8">
@@ -56,7 +101,7 @@ export default function IletisimPage() {
         <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-slate-900">
           {t("iletisim.title")}
         </h2>
-        <p className="text-slate-400 text-sm mt-1">Biz bilan bog'laning</p>
+        <p className="text-slate-400 text-sm mt-1">{localizedContent.subtitle}</p>
       </motion.div>
 
       {/* Contact Info - Bento cards */}
@@ -99,10 +144,12 @@ export default function IletisimPage() {
           {t("iletisim.socialMedia")}
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-          {SOCIAL_ITEMS.map((sm, i) => (
+          {socialItems.map((sm, i) => (
             <a
               key={i}
-              href="#"
+              href={sm.href || undefined}
+              target={sm.href ? "_blank" : undefined}
+              rel={sm.href ? "noreferrer" : undefined}
               className="rounded-[1.25rem] p-4 flex items-center gap-3 transition-all duration-300 hover:shadow-lg hover:-translate-y-1"
               style={{ backgroundColor: sm.bg }}
             >

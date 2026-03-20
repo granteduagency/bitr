@@ -1,3 +1,4 @@
+import i18n from '@/i18n/config';
 import { invokePublicFunction } from "@/lib/public-functions";
 
 export type AppointmentCheckType = "phone" | "email";
@@ -31,6 +32,49 @@ export type AppointmentCheckResult = {
   randevuStatus: AppointmentCheckStatus | null;
 };
 
+const translateAppointmentWarning = (warning: string) => {
+  const translations: Record<string, string> = {
+    kayit_numarasi_ayiklanamadi: i18n.t("ikamet.parseWarningRegistrationNumber"),
+    belge_numarasi_ayiklanamadi: i18n.t("ikamet.parseWarningDocumentNumber"),
+    telefon_veya_eposta_ayiklanamadi: i18n.t("ikamet.parseWarningContact"),
+    "Registration number could not be extracted.": i18n.t("ikamet.parseWarningRegistrationNumber"),
+    "Document number could not be extracted.": i18n.t("ikamet.parseWarningDocumentNumber"),
+    "Phone or email could not be extracted.": i18n.t("ikamet.parseWarningContact"),
+  };
+
+  return translations[warning] || warning;
+};
+
+const localizeParsedAppointmentData = (parsed: AppointmentParsedData): AppointmentParsedData => ({
+  ...parsed,
+  warnings: parsed.warnings.map(translateAppointmentWarning),
+});
+
+const localizeAppointmentError = (message: string | null) => {
+  const normalized = (message || "").trim();
+
+  const translations: Record<string, string> = {
+    "Could not create e-ikamet session.": i18n.t("ikamet.externalServiceUnavailable"),
+    "Could not initialize e-ikamet login page.": i18n.t("ikamet.externalServiceUnavailable"),
+    "Could not load captcha image.": i18n.t("ikamet.externalServiceNoResponse"),
+    "e-ikamet login request failed.": i18n.t("ikamet.externalServiceNoResponse"),
+    "Could not load application status page.": i18n.t("ikamet.externalServiceNoResponse"),
+    "Could not load detailed application status.": i18n.t("ikamet.externalServiceNoResponse"),
+    "Randevu tekshiruvini yakunlab bo'lmadi.": i18n.t("ikamet.externalServiceNoResponse"),
+  };
+
+  return translations[normalized] || normalized || i18n.t("ikamet.checkFailed");
+};
+
+const isAppointmentParseComplete = (parsed: AppointmentParsedData) =>
+  Boolean(parsed.registrationNumber && parsed.documentNumber && (parsed.phone || parsed.email));
+
+const assertValidAppointmentFile = (parsed: AppointmentParsedData) => {
+  if (!isAppointmentParseComplete(parsed)) {
+    throw new Error(i18n.t("ikamet.invalidAppointmentFile"));
+  }
+};
+
 const fileToBase64 = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -38,7 +82,7 @@ const fileToBase64 = (file: File) =>
     reader.onload = () => {
       const result = reader.result;
       if (typeof result !== "string") {
-        reject(new Error("Appointment file could not be read."));
+        reject(new Error(i18n.t('common.appointmentFileReadError')));
         return;
       }
 
@@ -47,7 +91,7 @@ const fileToBase64 = (file: File) =>
     };
 
     reader.onerror = () => {
-      reject(reader.error || new Error("Appointment file could not be read."));
+      reject(reader.error || new Error(i18n.t('common.appointmentFileReadError')));
     };
 
     reader.readAsDataURL(file);
@@ -129,15 +173,15 @@ const buildParsedAppointmentData = (input: {
   parsed.suggestedCheckType = suggestAppointmentCheckType(parsed.phone, parsed.email);
 
   if (!parsed.registrationNumber) {
-    parsed.warnings.push("Registration number could not be extracted.");
+    parsed.warnings.push("kayit_numarasi_ayiklanamadi");
   }
 
   if (!parsed.documentNumber) {
-    parsed.warnings.push("Document number could not be extracted.");
+    parsed.warnings.push("belge_numarasi_ayiklanamadi");
   }
 
   if (!parsed.phone && !parsed.email) {
-    parsed.warnings.push("Phone or email could not be extracted.");
+    parsed.warnings.push("telefon_veya_eposta_ayiklanamadi");
   }
 
   return parsed;
@@ -239,17 +283,16 @@ export const suggestAppointmentCheckType = (
 export async function parseAppointmentFile(file: File): Promise<AppointmentParsedData> {
   const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
+  if (!isPdf) {
+    throw new Error(i18n.t("ikamet.appointmentPdfOnly"));
+  }
+
   if (isPdf) {
     try {
       const text = await extractPdfTextClient(file);
-      const parsed = extractAppointmentFieldsFromText(text);
+      const parsed = localizeParsedAppointmentData(extractAppointmentFieldsFromText(text));
 
-      if (
-        parsed.registrationNumber ||
-        parsed.documentNumber ||
-        parsed.phone ||
-        parsed.email
-      ) {
+      if (isAppointmentParseComplete(parsed)) {
         return parsed;
       }
     } catch {
@@ -258,7 +301,7 @@ export async function parseAppointmentFile(file: File): Promise<AppointmentParse
   }
 
   const contentsBase64 = await fileToBase64(file);
-  return invokePublicFunction<AppointmentParsedData>("randevu-check", {
+  const parsed = await invokePublicFunction<AppointmentParsedData>("randevu-check", {
     action: "parse",
     file: {
       filename: file.name,
@@ -266,6 +309,10 @@ export async function parseAppointmentFile(file: File): Promise<AppointmentParse
       contentsBase64,
     },
   });
+
+  const localizedParsed = localizeParsedAppointmentData(parsed);
+  assertValidAppointmentFile(localizedParsed);
+  return localizedParsed;
 }
 
 export async function checkAppointmentStatus(input: {
@@ -276,7 +323,7 @@ export async function checkAppointmentStatus(input: {
   email?: string | null;
   parsedData: AppointmentParsedData;
 }): Promise<AppointmentCheckResult> {
-  return invokePublicFunction<AppointmentCheckResult>("randevu-check", {
+  const result = await invokePublicFunction<AppointmentCheckResult>("randevu-check", {
     action: "check",
     registrationNumber: input.registrationNumber,
     documentNumber: input.documentNumber,
@@ -285,4 +332,9 @@ export async function checkAppointmentStatus(input: {
     email: input.email || null,
     parsedData: input.parsedData,
   });
+
+  return {
+    ...result,
+    error: localizeAppointmentError(result.error),
+  };
 }

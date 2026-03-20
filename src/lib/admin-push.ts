@@ -1,4 +1,5 @@
 import { invokePublicFunction } from "@/lib/public-functions";
+import i18n from "@/i18n/config";
 import { supabase } from "@/lib/supabase";
 
 export type AdminPushServiceTab =
@@ -75,7 +76,7 @@ export async function ensureAdminPushSubscription(
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    throw new Error("Admin session is missing.");
+    throw new Error(i18n.t("common.requestFailed"));
   }
 
   const { error } = await supabase.from("admin_push_subscriptions").upsert(
@@ -89,7 +90,7 @@ export async function ensureAdminPushSubscription(
   );
 
   if (error) {
-    throw new Error(error.message || "Push subscription could not be saved.");
+    throw new Error(error.message || i18n.t("common.requestFailed"));
   }
 
   return true;

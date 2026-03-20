@@ -47,7 +47,7 @@ const jsonResponse = (body: unknown, status = 200) =>
 
 const requireConfiguredKeys = () => {
   if (!WEB_PUSH_PUBLIC_KEY || !WEB_PUSH_PRIVATE_KEY) {
-    throw new Error("Web push keys are not configured.");
+    throw new Error("bildirishnoma_kalitlari_eksik");
   }
 
   webpush.setVapidDetails(WEB_PUSH_SUBJECT, WEB_PUSH_PUBLIC_KEY, WEB_PUSH_PRIVATE_KEY);
@@ -64,7 +64,7 @@ const getAuthorizationToken = (req: Request) => {
 const requireAdminUser = async (req: Request) => {
   const token = getAuthorizationToken(req);
   if (!token) {
-    throw new Error("Missing auth token.");
+    throw new Error("yetki_belirteci_yok");
   }
 
   const {
@@ -73,7 +73,7 @@ const requireAdminUser = async (req: Request) => {
   } = await supabase.auth.getUser(token);
 
   if (userError || !user) {
-    throw new Error("Invalid auth token.");
+    throw new Error("yetkisiz");
   }
 
   const { data: roleRow, error: roleError } = await supabase
@@ -84,7 +84,7 @@ const requireAdminUser = async (req: Request) => {
     .maybeSingle();
 
   if (roleError || !roleRow) {
-    throw new Error("Admin access required.");
+    throw new Error("admin_yetkisi_gerekli");
   }
 
   return user;
@@ -112,7 +112,7 @@ const fetchApplicationSummary = async (serviceTab: ServiceTab, applicationId: st
     .maybeSingle();
 
   if (error || !data) {
-    throw new Error("Application could not be found.");
+    throw new Error("basvuru_bulunamadi");
   }
 
   const relation = (data as { clients?: unknown }).clients;
@@ -200,7 +200,7 @@ Deno.serve(async (req) => {
   }
 
   if (req.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed." }, 405);
+    return jsonResponse({ errorCode: "yontem_izin_verilmiyor" }, 405);
   }
 
   try {
@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
       const endpoint = subscription?.endpoint?.trim() || "";
 
       if (!endpoint || !subscription?.keys?.auth || !subscription?.keys?.p256dh) {
-        return jsonResponse({ error: "Invalid subscription payload." }, 400);
+        return jsonResponse({ errorCode: "gecersiz_abonelik_verisi" }, 400);
       }
 
       const { error } = await supabase.from("admin_push_subscriptions").upsert(
@@ -247,7 +247,7 @@ Deno.serve(async (req) => {
       const endpoint = payload.endpoint?.trim() || "";
 
       if (!endpoint) {
-        return jsonResponse({ error: "Missing subscription endpoint." }, 400);
+        return jsonResponse({ errorCode: "abonelik_adresi_yok" }, 400);
       }
 
       const { error } = await supabase
@@ -268,7 +268,7 @@ Deno.serve(async (req) => {
       const applicationId = payload.applicationId?.trim() || "";
 
       if (!isServiceTab(serviceTab) || !applicationId) {
-        return jsonResponse({ error: "Invalid notify payload." }, 400);
+        return jsonResponse({ errorCode: "gecersiz_bildirim_verisi" }, 400);
       }
 
       const application = await fetchApplicationSummary(serviceTab, applicationId);
@@ -283,9 +283,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, ...result });
     }
 
-    return jsonResponse({ error: "Unsupported action." }, 400);
+    return jsonResponse({ errorCode: "desteklenmeyen_islem" }, 400);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error.";
-    return jsonResponse({ error: message }, 500);
+    const errorCode = error instanceof Error ? error.message : "beklenmeyen_hata";
+    return jsonResponse({ errorCode }, 500);
   }
 });

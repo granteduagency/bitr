@@ -1,18 +1,78 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Input, Label, Surface, TextField } from "@heroui/react";
 import { Button } from "@/components/ui/button";
 import { calculateDeport } from "@/lib/deportCalculation";
+import { getDeportExchangeRate, type DeportExchangeRate } from "@/lib/deport-rate";
 import { AlertTriangle, CheckCircle, Calculator } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function DeportPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [entryDate, setEntryDate] = useState("");
   const [exitDate, setExitDate] = useState("");
   const [result, setResult] = useState<ReturnType<
     typeof calculateDeport
   > | null>(null);
+  const [exchangeRate, setExchangeRate] = useState<DeportExchangeRate | null>(null);
+  const [exchangeRateLoading, setExchangeRateLoading] = useState(true);
+  const [exchangeRateError, setExchangeRateError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    setExchangeRateLoading(true);
+    setExchangeRateError(false);
+
+    getDeportExchangeRate()
+      .then((data) => {
+        if (!active) return;
+        setExchangeRate(data);
+      })
+      .catch(() => {
+        if (!active) return;
+        setExchangeRate(null);
+        setExchangeRateError(true);
+      })
+      .finally(() => {
+        if (!active) return;
+        setExchangeRateLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const locale = i18n.language === "tr" ? "tr-TR" : "uz-UZ";
+  const numberFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(locale, {
+        maximumFractionDigits: 0,
+      }),
+    [locale],
+  );
+  const decimalFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(locale, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    [locale],
+  );
+  const rateFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat(locale, {
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 4,
+      }),
+    [locale],
+  );
+
+  const usdPenaltyAmount =
+    result?.hasViolation && exchangeRate?.usdTryRate
+      ? result.penaltyAmount / exchangeRate.usdTryRate
+      : null;
 
   const handleCalc = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +90,7 @@ export default function DeportPage() {
           {t("deport.title")}
         </h2>
         <p className="text-slate-400 text-sm mt-1">
-          Kirish va chiqish sanalarini kiriting
+          {t("deport.subtitle")}
         </p>
       </motion.div>
 
@@ -40,31 +100,33 @@ export default function DeportPage() {
         onSubmit={handleCalc}
       >
         <Surface className="rounded-[1.5rem] p-6 md:p-8 space-y-5">
-          <TextField
-            fullWidth
-            name="entry_date"
-            type="date"
-            isRequired
-            onChange={setEntryDate}
-            value={entryDate}
-          >
-            <Label>{t("deport.entryDate")}</Label>
-            <Input className="h-12 rounded-xl" />
-          </TextField>
-          <TextField
-            fullWidth
-            name="exit_date"
-            type="date"
-            isRequired
-            onChange={setExitDate}
-            value={exitDate}
-          >
-            <Label>{t("deport.exitDate")}</Label>
-            <Input className="h-12 rounded-xl" />
-          </TextField>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <TextField
+              fullWidth
+              name="entry_date"
+              type="date"
+              isRequired
+              onChange={setEntryDate}
+              value={entryDate}
+            >
+              <Label>{t("deport.entryDate")}</Label>
+              <Input className="h-12 rounded-xl" />
+            </TextField>
+            <TextField
+              fullWidth
+              name="exit_date"
+              type="date"
+              isRequired
+              onChange={setExitDate}
+              value={exitDate}
+            >
+              <Label>{t("deport.exitDate")}</Label>
+              <Input className="h-12 rounded-xl" />
+            </TextField>
+          </div>
           <Button
             type="submit"
-            className="w-full h-12 rounded-2xl bg-slate-900 text-white font-bold shadow-lg"
+            className="mx-auto h-12 w-fit rounded-2xl bg-slate-900 text-white font-bold shadow-lg"
           >
             <Calculator className="mr-2 h-4 w-4" /> {t("deport.calculate")}
           </Button>
@@ -109,16 +171,34 @@ export default function DeportPage() {
                       {t("deport.penaltyAmount")}
                     </span>
                     <span className="font-bold font-mono text-[#B85555]">
-                      {result.penaltyAmount.toLocaleString()} TL
+                      {numberFormatter.format(result.penaltyAmount)} TL
+                      {usdPenaltyAmount !== null
+                        ? ` / ${decimalFormatter.format(usdPenaltyAmount)} USD`
+                        : ""}
                     </span>
                   </div>
+                  {result.hasViolation && (
+                    <p className="px-1 text-xs text-slate-600">
+                      {exchangeRate
+                        ? t("deport.exchangeRateInfo", {
+                            date: exchangeRate.sourceDate,
+                            rate: rateFormatter.format(exchangeRate.usdTryRate),
+                            source: exchangeRate.source,
+                          })
+                        : exchangeRateLoading
+                          ? t("deport.exchangeRateLoading")
+                          : exchangeRateError
+                            ? t("deport.exchangeRateUnavailable")
+                            : null}
+                    </p>
+                  )}
                   {result.deportDuration && (
                     <div className="flex justify-between items-center bg-white/40 rounded-xl p-3">
                       <span className="text-sm text-slate-600">
                         {t("deport.deportDuration")}
                       </span>
                       <span className="font-bold text-slate-900">
-                        {result.deportDuration}
+                        {t(`deport.durationOptions.${result.deportDuration}`)}
                       </span>
                     </div>
                   )}

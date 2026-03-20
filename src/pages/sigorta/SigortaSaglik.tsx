@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { Input, Label, Surface, TextField } from '@heroui/react';
 import { FileUpload } from '@/components/shared/FileUpload';
+import { CountrySelectField } from '@/components/shared/CountrySelectField';
 import { PassportUploadField } from '@/components/shared/PassportUploadField';
 import { TabSelector } from '@/components/shared/TabSelector';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
@@ -10,6 +11,7 @@ import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { recordStoredClientApplication } from '@/lib/client-tracking';
+import { getCountryCodeFromValue, getCountryNameFromCode } from '@/lib/countries';
 import {
   passportSexToGender,
   type PassportExtractionData,
@@ -23,7 +25,7 @@ import { motion } from 'framer-motion';
 import { HeartPulse } from 'lucide-react';
 
 export default function SigortaSaglik() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [searchParams] = useSearchParams();
   const citizenType = searchParams.get('type') || 'yabanci';
   const [submitted, setSubmitted] = useState(false);
@@ -40,23 +42,40 @@ export default function SigortaSaglik() {
       ...prev,
       birth_date: prev.birth_date || extraction.date_of_birth || '',
       gender: prev.gender || gender,
-      country: prev.country || extraction.nationality || '',
+      country: prev.country || getCountryCodeFromValue(extraction.nationality) || '',
     }));
   };
 
   if (submitted) return <SuccessScreen />;
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault();
+
+    if (!form.passport_url) {
+      toast({
+        title: t('common.error'),
+        description: t('common.missingFieldsDescription', {
+          fields: t('sigorta.passportTc'),
+        }),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
       const applicationId = crypto.randomUUID();
+      const submissionData = {
+        ...form,
+        country: getCountryNameFromCode(form.country, i18n.language),
+      };
       const { error } = await supabase.from('sigorta_applications').insert({
         id: applicationId,
         client_id: cId,
         type: 'saglik',
         data: {
-          ...form,
+          ...submissionData,
           citizenType,
           passport_document_id: passportMeta?.documentId ?? null,
           passport_extraction: passportMeta?.extraction ?? null,
@@ -70,7 +89,7 @@ export default function SigortaSaglik() {
         details: {
           type: 'saglik',
           citizenType,
-          country: form.country,
+          country: submissionData.country,
           duration: form.duration,
         },
       }).catch((trackingError) => {
@@ -131,10 +150,12 @@ export default function SigortaSaglik() {
 
           {/* 3. Mamlakat & Boshlanish sanasi */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <TextField fullWidth isRequired name="country" variant="secondary" onChange={v => u('country', v)} value={form.country}>
-              <Label>{t('form.country')}</Label>
-              <Input />
-            </TextField>
+            <CountrySelectField
+              label={t('form.country')}
+              required
+              value={form.country}
+              onChange={(value) => u('country', value)}
+            />
             <TextField fullWidth isRequired name="start_date" type="date" variant="secondary" onChange={v => u('start_date', v)} value={form.start_date}>
               <Label>{t('sigorta.startDate')}</Label>
               <Input />
@@ -150,6 +171,7 @@ export default function SigortaSaglik() {
           {/* 5. Pasport (fayl) */}
           <PassportUploadField
             label={t('sigorta.passportTc')}
+            required
             onChange={(value) => {
               setPassportMeta(value);
               u('passport_url', value?.storageUrl || '');

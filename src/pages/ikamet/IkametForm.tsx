@@ -14,6 +14,7 @@ import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { recordStoredClientApplication } from '@/lib/client-tracking';
 import type { PassportUploadValue } from '@/lib/docupipe';
+import { validatePortraitPhoto } from '@/lib/photo-validation';
 import { MessageCircle } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -27,8 +28,16 @@ interface IkametFormProps {
 }
 
 export default function IkametForm({ category, type }: IkametFormProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const isStudentFirstApplication = category === 'ilk_kez' && type === 'ogrenci';
+  const isShortTermFirstApplication = category === 'ilk_kez' && type === 'kisa_donem';
+  const isStudentRenewalApplication = category === 'uzatma' && type === 'ogrenci';
+  const isStudentTransitionApplication = category === 'gecis' && type === 'ogrenci';
+  const isStudentSecondaryApplication = isStudentRenewalApplication || isStudentTransitionApplication;
+  const isFamilyApplication = type === 'aile';
+  const isShortOrLongTermApplication = type === 'kisa_donem' || type === 'uzun_donem';
+  const usesBasicResidenceUploads = !isFamilyApplication && !isStudentSecondaryApplication;
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uzunDonemOpen, setUzunDonemOpen] = useState(type === 'uzun_donem');
@@ -40,7 +49,7 @@ export default function IkametForm({ category, type }: IkametFormProps) {
   const [form, setForm] = useState({
     passport_url: '', father_name: '', mother_name: '', photo_url: '',
     phone: localStorage.getItem('client_phone') || '', email: '', address: '',
-    has_insurance: 'no', student_cert_url: '', supporter_id_front_url: '',
+    has_insurance: '', student_cert_url: '', supporter_id_front_url: '',
     supporter_id_back_url: '', supporter_passport_url: '', supporter_student_cert_url: '',
   });
   const u = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -74,14 +83,85 @@ export default function IkametForm({ category, type }: IkametFormProps) {
           <MessageCircle className="h-10 w-10 text-[#4A6EC5]" />
         </div>
         <h2 className="font-heading text-2xl font-extrabold text-slate-900">{t('ikamet.uzunDonemNo')}</h2>
-        <Button type="button" onClick={() => navigate('/dashboard/iletisim')}>{t('services.iletisim')}</Button>
+        <Button
+          type="button"
+          className="mx-auto h-12 w-fit rounded-2xl bg-black px-6 font-bold text-white shadow-lg hover:bg-black/90"
+          onClick={() => navigate('/dashboard/iletisim')}
+        >
+          {t('services.iletisim')}
+        </Button>
       </motion.div>
     );
   }
 
   /* ── Submit ── */
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault();
+
+    const missingFields: string[] = [];
+    const addMissingField = (condition: boolean, label: string) => {
+      if (condition) {
+        missingFields.push(label);
+      }
+    };
+
+    if (isStudentFirstApplication) {
+      addMissingField(!form.father_name.trim(), t('form.fatherName'));
+      addMissingField(!form.mother_name.trim(), t('form.motherName'));
+      addMissingField(!form.phone.trim(), t('form.phone'));
+      addMissingField(!form.has_insurance, t('form.insurance'));
+      addMissingField(!form.passport_url, t('form.passport'));
+      addMissingField(!form.photo_url, t('form.photo'));
+      addMissingField(!form.student_cert_url, t('form.studentCert'));
+    } else if (isShortTermFirstApplication) {
+      addMissingField(!form.father_name.trim(), t('form.fatherName'));
+      addMissingField(!form.mother_name.trim(), t('form.motherName'));
+      addMissingField(!form.phone.trim(), t('form.phone'));
+      addMissingField(!form.has_insurance, t('form.insurance'));
+      addMissingField(!form.passport_url, t('form.passport'));
+      addMissingField(!form.photo_url, t('form.photo'));
+    } else if (isStudentRenewalApplication) {
+      addMissingField(!form.has_insurance, t('form.insurance'));
+      addMissingField(!form.passport_url, t('form.passport'));
+      addMissingField(!form.photo_url, t('form.photo'));
+      addMissingField(!form.student_cert_url, t('form.studentCert'));
+    } else if (isFamilyApplication) {
+      addMissingField(!form.father_name.trim(), t('form.fatherName'));
+      addMissingField(!form.mother_name.trim(), t('form.motherName'));
+      addMissingField(!form.phone.trim(), t('form.phone'));
+      addMissingField(!form.passport_url, t('form.passport'));
+      addMissingField(!form.photo_url, t('form.photo'));
+      addMissingField(!form.student_cert_url, t('form.studentCert'));
+      addMissingField(!form.has_insurance, t('form.insurance'));
+      addMissingField(!form.supporter_id_front_url, t('form.supporterIdFront'));
+      addMissingField(!form.supporter_id_back_url, t('form.supporterIdBack'));
+      addMissingField(
+        supporterType === 'yabanci' && !form.supporter_passport_url,
+        t('form.supporterPassport'),
+      );
+    } else if (isShortOrLongTermApplication) {
+      addMissingField(!form.has_insurance, t('form.insurance'));
+      addMissingField(!form.passport_url, t('form.passport'));
+      addMissingField(!form.photo_url, t('form.photo'));
+    }
+
+    if (missingFields.length > 0) {
+      const formatter = new Intl.ListFormat(
+        i18n.language.startsWith('uz') ? 'uz' : 'tr',
+        { style: 'long', type: 'conjunction' },
+      );
+
+      toast({
+        title: t('common.error'),
+        description: t('ikamet.missingFieldsDescription', {
+          fields: formatter.format(missingFields),
+        }),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
       const applicationId = crypto.randomUUID();
@@ -131,7 +211,7 @@ export default function IkametForm({ category, type }: IkametFormProps) {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <Surface className="rounded-3xl p-6 md:p-8 space-y-6">
+        <Surface className="rounded-3xl p-6 pb-10 md:p-8 md:pb-10 space-y-6">
           {/* ── 1. Ota & Ona ismi (eng muhim shaxsiy ma'lumot) ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <TextField fullWidth isRequired name="father_name" variant="secondary" onChange={v => u('father_name', v)} value={form.father_name}>
@@ -151,7 +231,7 @@ export default function IkametForm({ category, type }: IkametFormProps) {
               <Input placeholder="+90 5XX XXX XX XX" />
             </TextField>
             <TextField fullWidth name="email" type="email" variant="secondary" onChange={v => u('email', v)} value={form.email}>
-              <Label>{t('form.email')}</Label>
+              <Label>{t('form.email')} <span className="text-muted text-xs font-normal">({t('common.optional')})</span></Label>
               <Input placeholder="email@example.com" />
             </TextField>
           </div>
@@ -163,64 +243,205 @@ export default function IkametForm({ category, type }: IkametFormProps) {
           </TextField>
 
           {/* ── 4. Sug'urta (w-fit - faqat Ha/Yo'q) ── */}
-          <div className="flex flex-col gap-1.5">
-            <Label>{t('form.insurance')}</Label>
-            <Select value={form.has_insurance || ''} onValueChange={v => u('has_insurance', v)}>
-              <SelectTrigger className="w-fit">
-                <SelectValue placeholder={t('common.select')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="yes">{t('form.insuranceYes')}</SelectItem>
-                <SelectItem value="no">{t('form.insuranceNo')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {!isStudentFirstApplication && !isFamilyApplication && !isStudentSecondaryApplication && (
+            <div className="flex flex-col gap-1.5">
+              <Label>
+                {t('form.insurance')}
+                {isShortOrLongTermApplication ? <span className="ml-1 text-red-500">*</span> : null}
+              </Label>
+              <Select value={form.has_insurance || ''} onValueChange={v => u('has_insurance', v)}>
+                <SelectTrigger className="w-fit">
+                  <SelectValue placeholder={t('common.select')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yes">{t('form.insuranceYes')}</SelectItem>
+                  <SelectItem value="no">{t('form.insuranceNo')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* ── 5. Hujjatlar (pastda, fayl yuklash) ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <PassportUploadField
-              label={t('form.passport')}
-              accept="image/*,.pdf"
-              onChange={(value) => {
-                setPassportMeta(value);
-                u('passport_url', value?.storageUrl || '');
-              }}
-            />
-            <FileUpload label={t('form.photo')} onUpload={(url) => u('photo_url', url)} accept="image/*" />
-          </div>
+          {!isFamilyApplication && !isStudentSecondaryApplication && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <PassportUploadField
+                label={t('form.passport')}
+                accept="image/*,.pdf"
+                required={usesBasicResidenceUploads}
+                onChange={(value) => {
+                  setPassportMeta(value);
+                  u('passport_url', value?.storageUrl || '');
+                }}
+              />
+              <FileUpload
+                label={t('form.photo')}
+                required={usesBasicResidenceUploads}
+                onUpload={(url) => u('photo_url', url)}
+                accept="image/*"
+                validateFile={validatePortraitPhoto}
+              />
+            </div>
+          )}
 
-          {/* ── Talaba guvohnomasi (faqat o'quvchi) ── */}
-          {type === 'ogrenci' && <FileUpload label={t('form.studentCert')} onUpload={(url) => u('student_cert_url', url)} accept="image/*,.pdf" />}
+          {isStudentSecondaryApplication && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <PassportUploadField
+                  label={t('form.passport')}
+                  accept="image/*,.pdf"
+                  required={isStudentRenewalApplication}
+                  onChange={(value) => {
+                    setPassportMeta(value);
+                    u('passport_url', value?.storageUrl || '');
+                  }}
+                />
+                <FileUpload
+                  label={t('form.studentCert')}
+                  required={isStudentRenewalApplication}
+                  onUpload={(url) => u('student_cert_url', url)}
+                  accept="image/*,.pdf"
+                />
+              </div>
+              <div className="space-y-4">
+                <FileUpload
+                  label={t('form.photo')}
+                  required={isStudentRenewalApplication}
+                  onUpload={(url) => u('photo_url', url)}
+                  accept="image/*"
+                  validateFile={validatePortraitPhoto}
+                />
+                <div className="flex flex-col gap-1.5">
+                  <Label>
+                    {t('form.insurance')}
+                    {isStudentRenewalApplication ? <span className="ml-1 text-red-500">*</span> : null}
+                  </Label>
+                  <Select value={form.has_insurance || ''} onValueChange={v => u('has_insurance', v)}>
+                    <SelectTrigger className="w-fit self-start">
+                      <SelectValue placeholder={t('common.select')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">{t('form.insuranceYes')}</SelectItem>
+                      <SelectItem value="no">{t('form.insuranceNo')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isFamilyApplication && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
+                <PassportUploadField
+                  label={t('form.passport')}
+                  accept="image/*,.pdf"
+                  required
+                  onChange={(value) => {
+                    setPassportMeta(value);
+                    u('passport_url', value?.storageUrl || '');
+                  }}
+                />
+                <FileUpload
+                  label={t('form.studentCert')}
+                  required
+                  onUpload={(url) => u('student_cert_url', url)}
+                  accept="image/*,.pdf"
+                />
+              </div>
+              <div className="space-y-4">
+                <FileUpload
+                  label={t('form.photo')}
+                  required
+                  onUpload={(url) => u('photo_url', url)}
+                  accept="image/*"
+                  validateFile={validatePortraitPhoto}
+                />
+                <div className="flex flex-col gap-1.5">
+                  <Label>
+                    {t('form.insurance')}
+                    <span className="ml-1 text-red-500">*</span>
+                  </Label>
+                  <Select value={form.has_insurance || ''} onValueChange={v => u('has_insurance', v)}>
+                    <SelectTrigger className="w-fit self-start">
+                      <SelectValue placeholder={t('common.select')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">{t('form.insuranceYes')}</SelectItem>
+                      <SelectItem value="no">{t('form.insuranceNo')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Talaba guvohnomasi + sug'urta (faqat talaba) ── */}
+          {type === 'ogrenci' && !isStudentSecondaryApplication && (
+            isStudentFirstApplication ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FileUpload
+                  label={t('form.studentCert')}
+                  required
+                  onUpload={(url) => u('student_cert_url', url)}
+                  accept="image/*,.pdf"
+                />
+                <div className="flex flex-col gap-1.5">
+                  <Label>
+                    {t('form.insurance')}
+                    <span className="ml-1 text-red-500">*</span>
+                  </Label>
+                  <Select value={form.has_insurance || ''} onValueChange={v => u('has_insurance', v)}>
+                    <SelectTrigger className="w-fit self-start">
+                      <SelectValue placeholder={t('common.select')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="yes">{t('form.insuranceYes')}</SelectItem>
+                      <SelectItem value="no">{t('form.insuranceNo')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : (
+              <FileUpload label={t('form.studentCert')} onUpload={(url) => u('student_cert_url', url)} accept="image/*,.pdf" />
+            )
+          )}
 
           {/* ── Oila hujjatlari ── */}
           {type === 'aile' && (
             <div className="space-y-5 border-t border-default/20 pt-5">
               <h3 className="font-heading font-bold text-base">{t('form.supporterDocs')}</h3>
-              <FileUpload label={t('form.studentCert')} onUpload={url => u('student_cert_url', url)} accept="image/*,.pdf" />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <FileUpload label={t('form.supporterIdFront')} onUpload={url => u('supporter_id_front_url', url)} accept="image/*" />
-                <FileUpload label={t('form.supporterIdBack')} onUpload={url => u('supporter_id_back_url', url)} accept="image/*" />
-              </div>
               <div className="space-y-2">
-                <Label>{t('form.supporterType')}</Label>
+                <Label>
+                  {t('form.supporterType')}
+                  <span className="ml-1 text-red-500">*</span>
+                </Label>
                 <TabSelector tabs={[{ key: 'yabanci', label: t('form.supporterTypeForeign') }, { key: 'turk', label: t('form.supporterTypeTurkish') }]} value={supporterType} onChange={setSupporterType} />
               </div>
-              {supporterType === 'yabanci' && (
-                <PassportUploadField
-                  label={t('form.supporterPassport')}
-                  accept="image/*,.pdf"
-                  onChange={(value) => {
-                    setSupporterPassportMeta(value);
-                    u('supporter_passport_url', value?.storageUrl || '');
-                  }}
-                />
-              )}
-              <FileUpload label={t('form.supporterStudentCert')} onUpload={url => u('supporter_student_cert_url', url)} accept="image/*,.pdf" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <FileUpload label={t('form.supporterIdFront')} required onUpload={url => u('supporter_id_front_url', url)} accept="image/*" />
+                <FileUpload label={t('form.supporterIdBack')} required onUpload={url => u('supporter_id_back_url', url)} accept="image/*" />
+              </div>
+              <div className={`grid grid-cols-1 gap-3 ${supporterType === 'yabanci' ? 'md:grid-cols-2' : ''}`}>
+                {supporterType === 'yabanci' && (
+                  <PassportUploadField
+                    label={t('form.supporterPassport')}
+                    accept="image/*,.pdf"
+                    required
+                    onChange={(value) => {
+                      setSupporterPassportMeta(value);
+                      u('supporter_passport_url', value?.storageUrl || '');
+                    }}
+                  />
+                )}
+                <FileUpload label={t('form.supporterStudentCert')} onUpload={url => u('supporter_student_cert_url', url)} accept="image/*,.pdf" />
+              </div>
             </div>
           )}
 
           {/* ── Submit ── */}
-          <SubmitButton isPending={loading} />
+          <div className="flex justify-center">
+            <SubmitButton isPending={loading} />
+          </div>
         </Surface>
       </form>
     </motion.div>

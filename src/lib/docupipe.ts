@@ -1,6 +1,8 @@
+import i18n from '@/i18n/config';
 import { invokePublicFunction } from "@/lib/public-functions";
 
 export interface PassportExtractionData {
+  [key: string]: string | null | undefined;
   passport_number: string | null;
   surname: string | null;
   given_names: string | null;
@@ -120,7 +122,7 @@ const fileToBase64 = (file: File) =>
     reader.onload = () => {
       const result = reader.result;
       if (typeof result !== "string") {
-        reject(new Error("Passport file could not be read."));
+        reject(new Error(i18n.t('common.passportFileReadError')));
         return;
       }
 
@@ -129,7 +131,7 @@ const fileToBase64 = (file: File) =>
     };
 
     reader.onerror = () => {
-      reject(reader.error || new Error("Passport file could not be read."));
+      reject(reader.error || new Error(i18n.t('common.passportFileReadError')));
     };
 
     reader.readAsDataURL(file);
@@ -154,7 +156,7 @@ export async function getDocuPipeOriginalUrl(documentId: string): Promise<string
 
   const url = typeof data?.url === "string" ? data.url : "";
   if (!url) {
-    throw new Error("DocuPipe did not return an original URL.");
+    throw new Error(i18n.t('common.originalDocumentUnavailable'));
   }
 
   return url;

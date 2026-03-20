@@ -185,7 +185,8 @@ let authCache:
 async function fetchJson<T>(url: string, init: RequestInit = {}): Promise<{ data: T; response: Response }> {
   const response = await fetch(url, init);
   if (!response.ok) {
-    throw new HttpError(response.status, await readErrorMessage(response));
+    await readErrorMessage(response);
+    throw new HttpError(response.status, "katalog_istek_hatasi");
   }
 
   return {
@@ -207,14 +208,14 @@ async function createCatalogSession(forceRefresh = false) {
   if (!baseUrl || !email || !password) {
     throw new HttpError(
       500,
-      "Catalog integration secrets are not configured.",
+      "katalog_gizli_ayarlar_eksik",
     );
   }
 
   const csrf = await fetchJson<{ csrfToken?: string }>(`${baseUrl}/api/auth/csrf`);
   const csrfToken = normalizeString(csrf.data.csrfToken);
   if (!csrfToken) {
-    throw new HttpError(502, "Catalog service did not return a CSRF token.");
+    throw new HttpError(502, "katalog_csrf_yok");
   }
 
   const csrfCookiePairs = parseSetCookieHeaders(csrf.response.headers)
@@ -242,7 +243,7 @@ async function createCatalogSession(forceRefresh = false) {
 
   const resolvedWorkspaceId = normalizeString(login.data.workspace?.id);
   if (!resolvedWorkspaceId) {
-    throw new HttpError(502, "Catalog service login did not return a workspace.");
+    throw new HttpError(502, "katalog_calisma_alani_yok");
   }
 
   authCache = {
@@ -258,7 +259,7 @@ async function createCatalogSession(forceRefresh = false) {
 async function fetchCatalogUniversities() {
   const baseUrl = normalizeBaseUrl(Deno.env.get("CATALOG_BASE_URL"));
   if (!baseUrl) {
-    throw new HttpError(500, "CATALOG_BASE_URL is not configured.");
+    throw new HttpError(500, "katalog_url_eksik");
   }
 
   const attemptFetch = async (forceRefresh = false) => {
@@ -340,7 +341,7 @@ function transformCatalogUniversities(universities: CatalogRawUniversity[]): Cat
         id: normalizeString(university.id),
         workspaceId: normalizeString(university.workspaceId),
         name: normalizeString(university.name),
-        country: normalizeString(university.country) || "Turkey",
+        country: normalizeString(university.country) || "Türkiye",
         city: normalizeString(university.city) || "Istanbul",
         website: optionalString(university.website),
         logoUrl: optionalString(university.logoUrl),
@@ -391,7 +392,7 @@ Deno.serve(async (req) => {
   }
 
   if (req.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed." }, 405);
+    return jsonResponse({ errorCode: "yontem_izin_verilmiyor" }, 405);
   }
 
   try {
@@ -399,7 +400,7 @@ Deno.serve(async (req) => {
     const action = normalizeString(payload.action);
 
     if (action && action !== "catalog") {
-      throw new HttpError(400, "Unsupported action.");
+      throw new HttpError(400, "desteklenmeyen_islem");
     }
 
     const catalog = await fetchCatalogUniversities();
@@ -414,7 +415,7 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
-    const message = error instanceof Error ? error.message : "Unexpected error.";
-    return jsonResponse({ error: message }, status);
+    const errorCode = error instanceof HttpError ? error.message : "beklenmeyen_hata";
+    return jsonResponse({ errorCode }, status);
   }
 });

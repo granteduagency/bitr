@@ -21,7 +21,7 @@ const docTypeKeys = ['passport','diploma','birthCert','criminalRecord','powerOfA
 const langKeys = ['tr','uz','en','ru','ar','de','fr'] as const;
 
 export default function TercumePage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
@@ -44,7 +44,29 @@ export default function TercumePage() {
   if (submitted) return <SuccessScreen />;
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault();
+
+    const missingFields = selectedDocs
+      .filter((key) => !docUrls[key])
+      .map((key) => t(`tercume.documentTypes.${key}`));
+
+    if (missingFields.length > 0) {
+      const formatter = new Intl.ListFormat(
+        i18n.language.startsWith('uz') ? 'uz' : 'tr',
+        { style: 'long', type: 'conjunction' },
+      );
+
+      toast({
+        title: t('common.error'),
+        description: t('common.missingFieldsDescription', {
+          fields: formatter.format(missingFields),
+        }),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
       const applicationId = crypto.randomUUID();
@@ -114,17 +136,16 @@ export default function TercumePage() {
       <form onSubmit={handleSubmit}>
         <Surface className="rounded-md p-6 md:p-8 space-y-6 bg-white/50">
           {/* Document type multi-select */}
-          <MultiSelect
-            label={t('tercume.documentType')}
-            placeholder="Hujjat turini tanlang..."
-            options={docTypeOptions}
-            value={selectedDocs}
-            onChange={setSelectedDocs}
-            selectAllLabel="Hammasini tanlash"
-          />
-
-          {/* Language selects - side by side */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:items-end">
+            <MultiSelect
+              label={t('tercume.documentType')}
+              placeholder="Hujjat turini tanlang..."
+              options={docTypeOptions}
+              value={selectedDocs}
+              onChange={setSelectedDocs}
+              selectAllLabel="Hammasini tanlash"
+              triggerClassName="w-full md:w-fit md:min-w-[240px]"
+            />
             <LangSelect value={fromLang} onChange={setFromLang} label={t('tercume.fromLanguage')} />
             <LangSelect value={toLang} onChange={setToLang} label={t('tercume.toLanguage')} />
           </div>
@@ -133,24 +154,28 @@ export default function TercumePage() {
           {selectedDocs.length > 0 && (
             <div className="space-y-3 border-t border-default/20 pt-5">
               <Label>{t('tercume.uploadDocuments')}</Label>
-              {selectedDocs.map(dk => (
-                dk === 'passport' ? (
-                  <PassportUploadField
-                    key={dk}
-                    label={t(`tercume.documentTypes.${dk}`)}
-                    onChange={(value) => {
-                      setPassportMeta(value);
-                      setDocUrls((prev) => ({ ...prev, [dk]: value?.storageUrl || '' }));
-                    }}
-                  />
-                ) : (
-                  <FileUpload
-                    key={dk}
-                    label={t(`tercume.documentTypes.${dk}`)}
-                    onUpload={url => setDocUrls(p => ({ ...p, [dk]: url }))}
-                  />
-                )
-              ))}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {selectedDocs.map(dk => (
+                  dk === 'passport' ? (
+                    <PassportUploadField
+                      key={dk}
+                      label={t(`tercume.documentTypes.${dk}`)}
+                      required
+                      onChange={(value) => {
+                        setPassportMeta(value);
+                        setDocUrls((prev) => ({ ...prev, [dk]: value?.storageUrl || '' }));
+                      }}
+                    />
+                  ) : (
+                    <FileUpload
+                      key={dk}
+                      label={t(`tercume.documentTypes.${dk}`)}
+                      required
+                      onUpload={url => setDocUrls(p => ({ ...p, [dk]: url }))}
+                    />
+                  )
+                ))}
+              </div>
             </div>
           )}
 

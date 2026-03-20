@@ -12,6 +12,12 @@ import {
   ensureAdminPushSubscription,
   removeAdminPushSubscription,
 } from "@/lib/admin-push";
+import {
+  DEFAULT_CONTACT_SETTINGS,
+  fetchContactSettings,
+  type ContactSettingsRow,
+} from "@/lib/contact-settings";
+import { invokeAdminFunction } from "@/lib/admin-functions";
 import type { Tables } from "@/integrations/supabase/types";
 import { supabase, uploadFile } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
@@ -96,10 +102,10 @@ const SERVICE_DETAIL_SECTIONS: Record<ServiceTab, DetailSectionConfig[]> = {
   ikamet: [
     { key: "overview", titleKey: "admin.sectionOverview", fields: ["category", "type", "created_at", "status"] },
     { key: "family", titleKey: "admin.sectionFamily", fields: ["father_name", "mother_name"] },
-    { key: "contact", titleKey: "admin.sectionContact", fields: ["phone", "email", "address", "has_insurance", "supporter_type"] },
+    { key: "contact", titleKey: "admin.sectionContact", fields: ["phone", "email", "address", "has_insurance"] },
     { key: "appointment", titleKey: "admin.sectionAppointment", fields: ["appointment_url", "appointment_result"] },
-    { key: "passport", titleKey: "admin.sectionPassport", fields: ["passport_url", "photo_url", "passport_extraction", "student_cert_url"] },
-    { key: "supporter", titleKey: "admin.sectionSupporter", fields: ["supporter_id_front_url", "supporter_id_back_url", "supporter_passport_url", "supporter_passport_extraction", "supporter_student_cert_url", "notes"] },
+    { key: "passport", titleKey: "admin.sectionPassport", fields: ["passport_url", "photo_url", "student_cert_url", "passport_extraction"] },
+    { key: "supporter", titleKey: "admin.sectionSupporter", fields: ["supporter_type", "supporter_passport_extraction", "supporter_id_front_url", "supporter_id_back_url", "supporter_passport_url", "supporter_student_cert_url", "notes"] },
   ],
   visa: [
     { key: "overview", titleKey: "admin.sectionOverview", fields: ["type", "phone", "created_at", "status"] },
@@ -110,7 +116,7 @@ const SERVICE_DETAIL_SECTIONS: Record<ServiceTab, DetailSectionConfig[]> = {
     { key: "details", titleKey: "admin.sectionDetails", fields: ["data"] },
   ],
   tercume: [
-    { key: "overview", titleKey: "admin.sectionOverview", fields: ["document_types", "from_language", "to_language", "created_at", "status"] },
+    { key: "overview", titleKey: "admin.sectionOverview", fields: ["from_language", "to_language", "status", "created_at"] },
     { key: "documents", titleKey: "admin.sectionDocuments", fields: ["documents_url", "passport_extraction"] },
   ],
   hukuk: [
@@ -167,6 +173,16 @@ type AdminNotificationItem = {
   createdAt: string;
   read: boolean;
 };
+type LeadActivitySummary = {
+  summary: string;
+  source?: "ai" | "fallback";
+};
+type DashboardInsights = {
+  overview: string;
+  issues: string[];
+  recommendations: string[];
+  source?: "ai" | "fallback";
+};
 
 const isServiceTab = (value: AdminTab): value is ServiceTab => value in tableMap;
 const formatNullableDate = (value: string | null | undefined) =>
@@ -209,7 +225,7 @@ const fetchAdminApplicationById = async (serviceTab: ServiceTab, id: string) => 
 };
 
 export default function AdminPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [session, setSession] = useState<Session | null>(null);
   const [selectedApp, setSelectedApp] = useState<AdminApplicationRecord | null>(null);
   const [email, setEmail] = useState("");
@@ -223,6 +239,11 @@ export default function AdminPage() {
   const [selectedLead, setSelectedLead] = useState<LeadRecord | null>(null);
   const [leadActivities, setLeadActivities] = useState<ActivityLogRecord[]>([]);
   const [leadActivitiesLoading, setLeadActivitiesLoading] = useState(false);
+  const [selectedLeadApplication, setSelectedLeadApplication] = useState<AdminApplicationRecord | null>(null);
+  const [selectedLeadApplicationTab, setSelectedLeadApplicationTab] = useState<ServiceTab | null>(null);
+  const [selectedLeadApplicationLoading, setSelectedLeadApplicationLoading] = useState(false);
+  const [leadSummary, setLeadSummary] = useState<LeadActivitySummary | null>(null);
+  const [leadSummaryLoading, setLeadSummaryLoading] = useState(false);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ url: string; label: string } | null>(null);
   const [imagePreviewLoading, setImagePreviewLoading] = useState(false);
@@ -240,6 +261,9 @@ export default function AdminPage() {
   });
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [contactSettingsForm, setContactSettingsForm] =
+    useState<ContactSettingsRow>(DEFAULT_CONTACT_SETTINGS);
+  const [contactSettingsSaving, setContactSettingsSaving] = useState(false);
   const [notifications, setNotifications] = useState<AdminNotificationItem[]>([]);
   const [stats, setStats] = useState({
     total: 0,
@@ -252,6 +276,11 @@ export default function AdminPage() {
   });
   const [dashboardPanel, setDashboardPanel] = useState<DashboardPanel>("stats");
   const [dashboardActivity, setDashboardActivity] = useState<DashboardActivityPreview[]>([]);
+  const [dashboardInsights, setDashboardInsights] = useState<DashboardInsights | null>(null);
+  const [dashboardInsightsLoading, setDashboardInsightsLoading] = useState(false);
+  const [dashboardClientsPage, setDashboardClientsPage] = useState(1);
+  const [clientsPage, setClientsPage] = useState(1);
+  const [prospectsPage, setProspectsPage] = useState(1);
   const sessionUserId = session?.user.id ?? null;
 
   useEffect(() => {
@@ -275,6 +304,7 @@ export default function AdminPage() {
         newPassword: "",
         confirmPassword: "",
       });
+      setContactSettingsForm(DEFAULT_CONTACT_SETTINGS);
       return;
     }
 
@@ -291,6 +321,14 @@ export default function AdminPage() {
       newPassword: "",
       confirmPassword: "",
     });
+
+    fetchContactSettings()
+      .then((data) => {
+        setContactSettingsForm(data);
+      })
+      .catch((error) => {
+        console.error("Contact settings load error:", error);
+      });
   }, [session]);
 
   useEffect(() => {
@@ -362,9 +400,14 @@ export default function AdminPage() {
     window.history.replaceState({}, document.title, "/admin");
   }, [t]);
 
-  const openLeadDetails = useCallback(async (lead: LeadRecord) => {
+  const openLeadDetails = async (lead: LeadRecord) => {
     setSelectedLead(lead);
     setLeadActivitiesLoading(true);
+    setSelectedLeadApplication(null);
+    setSelectedLeadApplicationTab(null);
+    setSelectedLeadApplicationLoading(true);
+    setLeadSummary(null);
+    setLeadSummaryLoading(true);
 
     try {
       const { data: logs, error } = await supabase
@@ -377,10 +420,81 @@ export default function AdminPage() {
         throw error;
       }
 
-      setLeadActivities(logs || []);
+      const nextActivities = logs || [];
+      setLeadActivities(nextActivities);
+      const summaryActivities = buildLeadSummaryActivities(nextActivities);
+
+      const linkedActivity = nextActivities.find(
+        (activity) =>
+          typeof activity.reference_id === "string" &&
+          Boolean(activity.reference_id) &&
+          typeof activity.service_key === "string" &&
+          isServiceTabKey(activity.service_key),
+      );
+
+      if (linkedActivity?.reference_id && linkedActivity.service_key && isServiceTabKey(linkedActivity.service_key)) {
+        const serviceTab = linkedActivity.service_key;
+        const application = await fetchAdminApplicationById(serviceTab, linkedActivity.reference_id);
+        setSelectedLeadApplication(application);
+        setSelectedLeadApplicationTab(application ? serviceTab : null);
+        setSelectedLeadApplicationLoading(false);
+
+        try {
+          const response = await invokeAdminFunction<LeadActivitySummary>(
+            "admin-lead-summary",
+            {
+              action: "summarize",
+              locale: i18n.language,
+              lead: {
+                name: lead.name,
+                phone: lead.phone,
+                applicationCount: lead.application_count,
+                lastService: lead.last_service_key || "",
+                lastActivityAt: lead.last_activity_at,
+              },
+              activities: summaryActivities,
+              applicationContext: buildLeadApplicationContext(
+                application,
+                application ? serviceTab : null,
+              ),
+            },
+          );
+
+          setLeadSummary({
+            summary: response.summary,
+            source: response.source,
+          });
+        } catch (error) {
+          console.error("Lead summary error:", error);
+          const fallbackSummary = buildLeadActivitySummaryFallback(nextActivities);
+          setLeadSummary(
+            fallbackSummary
+              ? {
+                summary: fallbackSummary,
+                source: "fallback",
+              }
+              : null,
+          );
+        }
+      } else {
+        setSelectedLeadApplicationLoading(false);
+        const fallbackSummary = buildLeadActivitySummaryFallback(nextActivities);
+        setLeadSummary(
+          fallbackSummary
+            ? {
+              summary: fallbackSummary,
+              source: "fallback",
+            }
+            : null,
+        );
+      }
     } catch (error) {
       console.error("Fetch lead activity error:", error);
       setLeadActivities([]);
+      setSelectedLeadApplication(null);
+      setSelectedLeadApplicationTab(null);
+      setSelectedLeadApplicationLoading(false);
+      setLeadSummary(null);
       toast({
         title: t("common.error"),
         description: t("admin.clientActivityLoadError"),
@@ -388,8 +502,9 @@ export default function AdminPage() {
       });
     } finally {
       setLeadActivitiesLoading(false);
+      setLeadSummaryLoading(false);
     }
-  }, [t]);
+  };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -399,7 +514,7 @@ export default function AdminPage() {
       setAvatarUploading(true);
       const uploadedUrl = await uploadFile(file, "documents");
       if (!uploadedUrl) {
-        throw new Error("Avatar upload failed.");
+        throw new Error(t("common.avatarUploadFailed"));
       }
 
       setSettingsForm((prev) => ({ ...prev, avatarUrl: uploadedUrl }));
@@ -487,6 +602,52 @@ export default function AdminPage() {
     }
   };
 
+  const saveContactSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    try {
+      setContactSettingsSaving(true);
+
+      const payload = {
+        id: 1,
+        subtitle_uz: contactSettingsForm.subtitle_uz.trim(),
+        subtitle_tr: contactSettingsForm.subtitle_tr.trim(),
+        address_uz: contactSettingsForm.address_uz.trim(),
+        address_tr: contactSettingsForm.address_tr.trim(),
+        phone: contactSettingsForm.phone.trim(),
+        email: contactSettingsForm.email.trim(),
+        working_hours_uz: contactSettingsForm.working_hours_uz.trim(),
+        working_hours_tr: contactSettingsForm.working_hours_tr.trim(),
+        whatsapp_url: contactSettingsForm.whatsapp_url.trim(),
+        telegram_url: contactSettingsForm.telegram_url.trim(),
+        instagram_url: contactSettingsForm.instagram_url.trim(),
+        facebook_url: contactSettingsForm.facebook_url.trim(),
+      };
+
+      const { error } = await supabase
+        .from("contact_settings")
+        .upsert(payload, { onConflict: "id" });
+
+      if (error) {
+        throw error;
+      }
+
+      setContactSettingsForm((prev) => ({
+        ...prev,
+        ...payload,
+      }));
+      toast({ title: t("common.success") });
+    } catch (error) {
+      toast({
+        title: t("common.error"),
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setContactSettingsSaving(false);
+    }
+  };
+
   // Per-service field definitions: key = DB column, labelKey = translation key
   const SERVICE_FIELDS: Record<ServiceTab, ServiceField[]> = {
     ikamet: [
@@ -530,7 +691,6 @@ export default function AdminPage() {
       { key: 'created_at', labelKey: 'admin.createdAt', isDate: true },
     ],
     tercume: [
-      { key: 'document_types', labelKey: 'tercume.documentType' },
       { key: 'from_language', labelKey: 'tercume.fromLanguage' },
       { key: 'to_language', labelKey: 'tercume.toLanguage' },
       { key: 'documents_url', labelKey: 'tercume.uploadDocuments', isFile: true },
@@ -571,6 +731,28 @@ export default function AdminPage() {
 
   const isJsonObject = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
+  const STRUCTURED_FIELD_ORDER: Partial<Record<string, string[]>> = {
+    passport_extraction: [
+      "sex",
+      "place_of_birth",
+      "nationality",
+      "date_of_birth",
+      "date_of_issue",
+      "date_of_expiry",
+      "passport_number",
+      "personal_number",
+    ],
+    supporter_passport_extraction: [
+      "sex",
+      "place_of_birth",
+      "nationality",
+      "date_of_birth",
+      "date_of_issue",
+      "date_of_expiry",
+      "passport_number",
+      "personal_number",
+    ],
+  };
   const shouldHideStructuredKey = (key: string, rootKey?: string) => {
     if (key.toLowerCase() === "mrz") {
       return true;
@@ -650,6 +832,80 @@ export default function AdminPage() {
 
     return readText(record?.phone) || readText(dataPayload?.phone) || "—";
   };
+  const getInsuranceSummaryValue = (item: AdminApplicationRecord | null | undefined) => {
+    const record = item as unknown as Record<string, unknown> | null;
+    const dataPayload = getApplicationPayload(item);
+    const directValue = record?.has_insurance;
+    const payloadValue = dataPayload?.has_insurance;
+    const value = payloadValue ?? directValue;
+
+    if (typeof value === "boolean") {
+      return value ? t("form.insuranceYes") : t("form.insuranceNo");
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      const normalized = value.trim().toLowerCase();
+      if (["true", "yes", "ha", "var"].includes(normalized)) {
+        return t("form.insuranceYes");
+      }
+      if (["false", "no", "yoq", "yok", "yoktur"].includes(normalized)) {
+        return t("form.insuranceNo");
+      }
+      return value.trim();
+    }
+
+    return "—";
+  };
+  const buildLeadActivitySummaryFallback = (activities: ActivityLogRecord[]) => {
+    const summaryActivities = buildLeadSummaryActivities(activities).slice(0, 3);
+    if (summaryActivities.length === 0) {
+      return "";
+    }
+
+    const isUz = i18n.language.startsWith("uz");
+    const lines = summaryActivities
+      .map((activity) => lowerFirstLetter(activity.title))
+      .filter(Boolean);
+
+    if (lines.length === 0) {
+      return "";
+    }
+
+    if (isUz) {
+      return `Mijozning so'nggi faolligiga ko'ra, u ${lines.join(". ")}.`;
+    }
+
+    return `Müşterinin son hareketlerine göre ${lines.join(". ")}.`;
+  };
+  const buildLeadApplicationContext = (
+    item: AdminApplicationRecord | null,
+    serviceTab: ServiceTab | null,
+  ) => {
+    if (!item || !serviceTab) {
+      return null;
+    }
+
+    const record = item as unknown as Record<string, unknown>;
+    const payload = getApplicationPayload(item);
+
+    return {
+      service: getServiceLabel(serviceTab),
+      category: readText(record.category),
+      type: formatValue("type", record.type),
+      status: formatValue("status", record.status),
+      phone: getClientPhone(item),
+      email: readText(record.email) || readText(payload?.email),
+      insurance: getInsuranceSummaryValue(item),
+      university: readText(record.external_university_name),
+      degree: readText(record.degree),
+      faculty: readText(record.faculty),
+      program: readText(record.program),
+      language: readText(record.language),
+      supporterType: readText(record.supporter_type),
+      fatherName: readText(record.father_name),
+      motherName: readText(record.mother_name),
+    };
+  };
   const getPassportIdentitySummary = (item: AdminApplicationRecord | null | undefined) => {
     const extraction = getPrimaryPassportExtraction(item);
     if (!extraction) return [];
@@ -660,17 +916,155 @@ export default function AdminPage() {
       { key: "father_name", label: t("form.fatherName"), value: getPassportFatherName(extraction) },
     ].filter((field) => field.value);
   };
-  const getLeadStatusLabel = (lead: LeadRecord) =>
-    lead.application_count > 0 ? t("admin.convertedClient") : t("admin.prospectClient");
-  const getLeadStatusClasses = (lead: LeadRecord) =>
-    lead.application_count > 0
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : "bg-amber-50 text-amber-700 border-amber-200";
   const getLeadServiceLabel = (lead: LeadRecord) =>
     lead.last_service_key && isServiceTabKey(lead.last_service_key)
       ? getServiceLabel(lead.last_service_key)
       : t("admin.dashboardActivity");
-  const getLeadActionLabel = (action: string | null | undefined) => {
+  const getServiceBadgeClasses = (service?: string | null) => {
+    switch (service) {
+      case "ikamet":
+        return "bg-sky-50 text-sky-700 border-sky-200";
+      case "sigorta":
+        return "bg-rose-50 text-rose-700 border-rose-200";
+      case "visa":
+        return "bg-violet-50 text-violet-700 border-violet-200";
+      case "calisma":
+        return "bg-amber-50 text-amber-700 border-amber-200";
+      case "tercume":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
+      case "hukuk":
+        return "bg-red-50 text-red-700 border-red-200";
+      case "universite":
+        return "bg-indigo-50 text-indigo-700 border-indigo-200";
+      default:
+        return "bg-slate-50 text-slate-700 border-slate-200";
+    }
+  };
+  const paginateRows = <T,>(rows: T[], page: number, pageSize: number) =>
+    rows.slice((page - 1) * pageSize, page * pageSize);
+  const lowerFirstLetter = (value: string) =>
+    value ? value.charAt(0).toLowerCase() + value.slice(1) : value;
+  const getIkametCategoryLabel = useCallback((value: string) => {
+    const normalized = value.replace(/_/g, "-");
+    const map: Record<string, string> = {
+      "ilk-kez": t("ikamet.ilkKez"),
+      uzatma: t("ikamet.uzatma"),
+      gecis: t("ikamet.gecis"),
+      sonuc: t("ikamet.sonuc"),
+    };
+
+    return map[normalized] || "";
+  }, [t]);
+  const getIkametTypeLabel = useCallback((value: string) => {
+    const map: Record<string, string> = {
+      ogrenci: t("ikamet.ogrenci"),
+      aile: t("ikamet.aile"),
+      kisa_donem: t("ikamet.kisaDonem"),
+      uzun_donem: t("ikamet.uzunDonem"),
+    };
+
+    return map[value] || "";
+  }, [t]);
+  const getRouteLabel = useCallback((route: string | null | undefined) => {
+    const path = readText(route).split("?")[0].replace(/\/+$/, "");
+    if (!path) {
+      return t("admin.routeUnknown");
+    }
+
+    if (path === "/dashboard") {
+      return t("admin.dashboard");
+    }
+
+    const segments = path.split("/").filter(Boolean);
+    if (segments[0] !== "dashboard") {
+      return path;
+    }
+
+    const section = segments[1] || "";
+
+    if (section === "ikamet") {
+      const categoryLabel = getIkametCategoryLabel(segments[2] || "");
+      const typeLabel = getIkametTypeLabel(segments[3] || "");
+
+      if (categoryLabel && typeLabel) {
+        return `${categoryLabel} · ${typeLabel}`;
+      }
+
+      if (categoryLabel) {
+        return categoryLabel;
+      }
+
+      return t("ikamet.title");
+    }
+
+    if (section === "sigorta") {
+      const type = segments[2] || "";
+      if (type === "saglik") return t("sigorta.saglik");
+      if (type === "turizm") return t("sigorta.turizm");
+      return t("services.sigorta");
+    }
+
+    if (section === "universite") return t("services.universite");
+    if (section === "viza") return t("services.viza");
+    if (section === "tercume") return t("services.tercume");
+    if (section === "hukuk") return t("services.hukuk");
+    if (section === "calisma") return t("services.calisma");
+    if (section === "iletisim") return t("services.iletisim");
+
+    return path;
+  }, [getIkametCategoryLabel, getIkametTypeLabel, t]);
+  const getActivitySummaryText = useCallback((activity: ActivityLogRecord) => {
+    const isUz = i18n.language.startsWith("uz");
+    const details = isJsonObject(activity.details) ? activity.details : null;
+    const routeLabel = getRouteLabel(activity.route);
+    const universityName = readText(details?.universityName);
+    const searchFilters = [
+      readText(details?.degree),
+      readText(details?.faculty),
+      readText(details?.program),
+      readText(details?.language),
+    ].filter(Boolean).join(" · ");
+    const status = readText(details?.status);
+    const type = readText(details?.type);
+
+    switch (activity.action) {
+      case "route_viewed":
+        return isUz
+          ? `${routeLabel} bo'limini ko'rib chiqqan`
+          : `${routeLabel} bölümünü incelemiş`;
+      case "university_search":
+        return searchFilters
+          ? (isUz
+            ? `${searchFilters} bo'yicha universitet qidirgan`
+            : `${searchFilters} kriterlerine göre üniversite aramış`)
+          : (isUz ? "Universitetlarni ko'rib chiqqan" : "Üniversiteleri incelemiş");
+      case "university_selected":
+        return universityName
+          ? (isUz
+            ? `${universityName} universitetini tanlagan`
+            : `${universityName} üniversitesini seçmiş`)
+          : (isUz ? "Universitet tanlagan" : "Üniversite seçmiş");
+      case "appointment_document_parsed":
+        return isUz
+          ? "Randevu hujjatini yuklab, ma'lumotlarini ajratgan"
+          : "Randevu belgesini yükleyip bilgileri ayıklamış";
+      case "appointment_check_completed":
+        return status
+          ? (isUz
+            ? `Randevu holatini tekshirgan: ${status}`
+            : `Randevu durumunu kontrol etmiş: ${status}`)
+          : (isUz ? "Randevu holatini tekshirgan" : "Randevu durumunu kontrol etmiş");
+      case "application_submitted":
+        return type
+          ? (isUz
+            ? `${type} bo'yicha ariza yuborgan`
+            : `${type} için başvuru göndermiş`)
+          : (isUz ? "Ariza yuborgan" : "Başvuru göndermiş");
+      default:
+        return isUz ? "Platformada faol bo'lgan" : "Platformada aktif olmuş";
+    }
+  }, [getRouteLabel, i18n.language]);
+  const getLeadActionLabel = useCallback((action: string | null | undefined) => {
     switch (action) {
       case "route_viewed":
         return t("admin.activityRouteViewed");
@@ -687,8 +1081,8 @@ export default function AdminPage() {
       default:
         return t("admin.activityVisited");
     }
-  };
-  const getActivityDescription = (activity: ActivityLogRecord) => {
+  }, [t]);
+  const getActivityDescription = useCallback((activity: ActivityLogRecord) => {
     const details = isJsonObject(activity.details) ? activity.details : null;
     const route = readText(activity.route);
     const status = readText(details?.status);
@@ -697,7 +1091,7 @@ export default function AdminPage() {
 
     switch (activity.action) {
       case "route_viewed":
-        return route || t("admin.routeUnknown");
+        return getRouteLabel(route);
       case "university_search":
         return [readText(details?.degree), readText(details?.faculty), readText(details?.program), readText(details?.language)]
           .filter(Boolean)
@@ -713,7 +1107,69 @@ export default function AdminPage() {
       default:
         return getLeadActionLabel(activity.action);
     }
-  };
+  }, [getLeadActionLabel, getRouteLabel, t]);
+  const buildLeadSummaryActivities = useCallback((activities: ActivityLogRecord[]) => {
+    const isUz = i18n.language.startsWith("uz");
+    const hasMeaningfulActivity = activities.some(
+      (activity) =>
+        activity.action !== "route_viewed" ||
+        getRouteLabel(activity.route) !== t("admin.dashboard"),
+    );
+
+    const filtered = activities.filter((activity) => {
+      if (!hasMeaningfulActivity) {
+        return true;
+      }
+
+      return !(
+        activity.action === "route_viewed" &&
+        getRouteLabel(activity.route) === t("admin.dashboard")
+      );
+    });
+
+    const ordered: Array<{
+      at: string;
+      title: string;
+      description: string;
+      route: string | null;
+      service: string | null;
+      count: number;
+    }> = [];
+    const seen = new Map<string, number>();
+
+    for (const activity of filtered) {
+      const title = getActivitySummaryText(activity);
+      const description = getActivityDescription(activity);
+      const key = `${title}::${description}`;
+      const existingIndex = seen.get(key);
+
+      if (existingIndex !== undefined) {
+        ordered[existingIndex].count += 1;
+        continue;
+      }
+
+      seen.set(key, ordered.length);
+      ordered.push({
+        at: activity.created_at,
+        title,
+        description,
+        route: activity.route,
+        service: activity.service_key,
+        count: 1,
+      });
+    }
+
+    return ordered.slice(0, 6).map((item) => ({
+      at: item.at,
+      title:
+        item.count > 1
+          ? `${item.title} (${item.count} ${isUz ? "marta" : "kez"})`
+          : item.title,
+      description: item.description,
+      route: item.route,
+      service: item.service,
+    }));
+  }, [getActivityDescription, getActivitySummaryText, getRouteLabel, i18n.language, t]);
   const getAdminDisplayName = (currentSession: Session | null) =>
     (typeof currentSession?.user?.user_metadata?.full_name === "string"
       ? currentSession.user.user_metadata.full_name.trim()
@@ -729,8 +1185,8 @@ export default function AdminPage() {
       .slice(0, 2)
       .map((chunk) => chunk[0]?.toUpperCase() || "")
       .join("") || "A";
-  const getServiceLabel = (service: ServiceTab) =>
-    service === "visa" ? t("services.viza") : t(`services.${service}`);
+  const getServiceLabel = useCallback((service: ServiceTab) =>
+    service === "visa" ? t("services.viza") : t(`services.${service}`), [t]);
   const getTabLabel = (value: AdminTab) => {
     if (value === "dashboard") return t("admin.dashboard");
     if (value === "clients") return t("admin.clients");
@@ -738,6 +1194,8 @@ export default function AdminPage() {
     if (value === "settings") return t("admin.settings");
     return getServiceLabel(value);
   };
+  const dashboardClientsPageSize = 3;
+  const leadTablePageSize = 8;
 
   const fetchData = async (serviceTab: ServiceTab) => {
     const table = tableMap[serviceTab];
@@ -779,7 +1237,7 @@ export default function AdminPage() {
       .from("client_activity_logs")
       .select("*, client_leads(name, phone)")
       .order("created_at", { ascending: false })
-      .limit(6);
+      .limit(10);
 
     if (error) {
       console.error("Fetch dashboard activity error:", error);
@@ -827,6 +1285,69 @@ export default function AdminPage() {
       applicants: applicantsCount || 0,
     };
   };
+
+  const buildDashboardInsightsFallback = useCallback(() => {
+    const serviceUsage = (Object.keys(tableMap) as ServiceTab[])
+      .map((serviceTab) => ({
+        serviceTab,
+        label: getServiceLabel(serviceTab),
+        total: serviceCache[serviceTab]?.length || 0,
+        pending: (serviceCache[serviceTab] || []).filter((item) => item.status === "pending").length,
+      }))
+      .sort((left, right) => right.total - left.total);
+
+    const topServices = serviceUsage.filter((item) => item.total > 0).slice(0, 3);
+    const isUz = i18n.language.startsWith("uz");
+    const applicants = stats.applicants;
+    const prospectsCount = stats.prospects;
+    const backlogHeavy = stats.pending > stats.completed;
+
+    if (isUz) {
+      return {
+        overview: topServices.length > 0
+          ? `Hozir eng ko'p murojaat ${topServices.map((item) => `${item.label} (${item.total})`).join(", ")} bo'limlaridan kelmoqda. Jami ${stats.allClients} mijozdan ${applicants} tasi ariza yuborgan, ${prospectsCount} tasi esa hali qiziqish bosqichida.`
+          : `Hozircha AI tahlili uchun yetarli xizmat ma'lumoti to'planmagan, lekin jami ${stats.allClients} mijoz kuzatilmoqda.`,
+        issues: [
+          prospectsCount > applicants
+            ? "Qiziqish bildirgan, lekin arizaga o'tmagan mijozlar soni yuqori. Bu follow-up va tezkor aloqa yetarli emasligini ko'rsatishi mumkin."
+            : "Arizaga o'tish ko'rsatkichi yomon emas, lekin hali ham qiziqish bosqichidagi mijozlarni tezroq qayta aloqa bilan yopish kerak.",
+          backlogHeavy
+            ? "Kutilayotgan arizalar bajarilgan arizalardan ko'p. Bu ichki jarayonlarda sekinlashuv borligini ko'rsatadi."
+            : "Jarayonlar barqaror, lekin eng ko'p talab bo'layotgan bo'limlarda yuklama oshib borayotganini kuzatish kerak.",
+        ],
+        recommendations: [
+          topServices[0]
+            ? `${topServices[0].label} bo'limiga ko'proq e'tibor bering, chunki aynan shu yo'nalishda talab eng yuqori.`
+            : "Mijoz qaysi bo'limlarda ko'proq to'xtab qolayotganini muntazam kuzatib boring.",
+          "Ariza yubormagan mijozlarga tezkor aloqa, hujjat ro'yxati va keyingi qadamni aniqroq berish konversiyani oshiradi.",
+          "Kutilayotgan arizalar uchun ichki prioritetlash va javob vaqtini qisqartirish foydali bo'ladi.",
+        ],
+        source: "fallback" as const,
+      };
+    }
+
+    return {
+      overview: topServices.length > 0
+        ? `Şu anda en yoğun talep ${topServices.map((item) => `${item.label} (${item.total})`).join(", ")} alanlarında toplanıyor. Toplam ${stats.allClients} müşteriden ${applicants} tanesi başvuru göndermiş, ${prospectsCount} tanesi ise hâlâ ilgi aşamasında.`
+        : `Şimdilik yapay analiz için yeterli hizmet verisi yok, ancak toplam ${stats.allClients} müşteri takip ediliyor.`,
+      issues: [
+        prospectsCount > applicants
+          ? "İlgi gösterip başvuruya dönmeyen müşteri sayısı yüksek. Bu durum geri dönüş ve takip sürecinde eksik olabileceğini gösteriyor."
+          : "Başvuruya dönüşüm fena değil, ancak ilgi aşamasındaki müşterilere daha hızlı geri dönüş yapılmalı.",
+        backlogHeavy
+          ? "Bekleyen başvuru sayısı tamamlananlardan fazla. Bu durum iç süreçlerde yavaşlama olduğunu düşündürüyor."
+          : "Süreçler dengeli görünüyor, ancak en çok talep alan hizmetlerde yük artışını takip etmek gerekiyor.",
+      ],
+      recommendations: [
+        topServices[0]
+          ? `${topServices[0].label} alanına daha fazla dikkat verin; şu anda en yüksek talep bu tarafta.`
+          : "Müşterilerin en çok hangi aşamada beklediğini düzenli takip edin.",
+        "Başvuruya dönüşmeyen müşterilere net belge listesi ve sonraki adımı hızlıca iletmek dönüşümü artırır.",
+        "Bekleyen başvurular için iç önceliklendirme ve daha hızlı geri dönüş planı oluşturmak faydalı olur.",
+      ],
+      source: "fallback" as const,
+    };
+  }, [getServiceLabel, i18n.language, serviceCache, stats.allClients, stats.applicants, stats.completed, stats.pending, stats.prospects]);
 
   useEffect(() => {
     if (!sessionUserId) {
@@ -960,6 +1481,85 @@ export default function AdminPage() {
       isActive = false;
     };
   }, [adminBootstrapped, sessionUserId, tab]);
+
+  useEffect(() => {
+    if (!sessionUserId || !adminBootstrapped || dashboardPanel !== "activity") {
+      return;
+    }
+
+    let isActive = true;
+
+    const loadDashboardInsights = async () => {
+      setDashboardInsightsLoading(true);
+
+      try {
+        const serviceUsage = (Object.keys(tableMap) as ServiceTab[]).map((serviceTab) => {
+          const rows = serviceCache[serviceTab] || [];
+          return {
+            service: serviceTab,
+            label: getServiceLabel(serviceTab),
+            total: rows.length,
+            pending: rows.filter((item) => item.status === "pending").length,
+            completed: rows.filter((item) => item.status === "completed").length,
+          };
+        });
+
+        const response = await invokeAdminFunction<DashboardInsights>(
+          "admin-dashboard-insights",
+          {
+            action: "summarize",
+            locale: i18n.language,
+            stats,
+            serviceUsage,
+            recentActivities: dashboardActivity.slice(0, 10).map((activity) => ({
+              clientName: activity.client_leads?.name || "",
+              clientPhone: activity.client_leads?.phone || "",
+              action: getActivitySummaryText(activity),
+              at: activity.created_at,
+              service: activity.service_key && isServiceTabKey(activity.service_key)
+                ? getServiceLabel(activity.service_key)
+                : getRouteLabel(activity.route),
+            })),
+          },
+        );
+
+        if (!isActive) {
+          return;
+        }
+
+        setDashboardInsights(response);
+      } catch (error) {
+        console.error("Dashboard insights error:", error);
+        if (!isActive) {
+          return;
+        }
+
+        setDashboardInsights(buildDashboardInsightsFallback());
+      } finally {
+        if (isActive) {
+          setDashboardInsightsLoading(false);
+        }
+      }
+    };
+
+    void loadDashboardInsights();
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    adminBootstrapped,
+    buildDashboardInsightsFallback,
+    dashboardActivity,
+    dashboardPanel,
+    getActivitySummaryText,
+    getRouteLabel,
+    getServiceLabel,
+    i18n.language,
+    serviceCache,
+    sessionUserId,
+    stats,
+  ]);
 
   useEffect(() => {
     if (!sessionUserId || typeof window === "undefined") return;
@@ -1111,10 +1711,13 @@ export default function AdminPage() {
     }
 
     const specialLabels: Record<string, string> = {
+      passport_url: "admin.passportPhoto",
       passport_document_id: "admin.passportOriginal",
       supporter_passport_document_id: "admin.supporterPassportOriginal",
       passport_extraction: "admin.passportExtraction",
       supporter_passport_extraction: "admin.supporterPassportExtraction",
+      sex: "admin.genderShort",
+      place_of_birth: "admin.birthCity",
     };
 
     const specialLabelKey = specialLabels[key];
@@ -1170,6 +1773,20 @@ export default function AdminPage() {
 
     if (key === "category" || key === "type") {
       const serviceValue = String(value);
+      const ikametTranslationMap: Record<string, string> = {
+        ilk_kez: "ikamet.ilkKez",
+        uzatma: "ikamet.uzatma",
+        gecis: "ikamet.gecis",
+        sonuc: "ikamet.sonuc",
+        ogrenci: "ikamet.ogrenci",
+        aile: "ikamet.aile",
+        kisa_donem: "ikamet.kisaDonem",
+        uzun_donem: "ikamet.uzunDonem",
+      };
+      const ikametTranslationKey = ikametTranslationMap[serviceValue];
+      if (ikametTranslationKey && t(ikametTranslationKey) !== ikametTranslationKey) {
+        return t(ikametTranslationKey);
+      }
       if (t(`ikamet.${serviceValue}`) !== `ikamet.${serviceValue}`) return t(`ikamet.${serviceValue}`);
       if (t(`viza.types.${serviceValue}`) !== `viza.types.${serviceValue}`) return t(`viza.types.${serviceValue}`);
       if (serviceValue === "yurt_ici" && t("calisma.yurtIci") !== "calisma.yurtIci") return t("calisma.yurtIci");
@@ -1189,6 +1806,26 @@ export default function AdminPage() {
     if (key === "from_language" || key === "to_language" || key === "language") {
       const translated = t(`tercume.languages.${value}`);
       return translated !== `tercume.languages.${value}` ? translated : String(value);
+    }
+
+    if (key === "document_types") {
+      const items = Array.isArray(value)
+        ? value
+        : String(value)
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+
+      if (items.length === 0) {
+        return "—";
+      }
+
+      return items
+        .map((item) => {
+          const translated = t(`tercume.documentTypes.${item}`);
+          return translated !== `tercume.documentTypes.${item}` ? translated : item;
+        })
+        .join(", ");
     }
 
     if (key === "degree") {
@@ -1351,11 +1988,33 @@ export default function AdminPage() {
     }
 
     if (typeof value === "object") {
-      return Object.entries(value as Record<string, unknown>).flatMap(([childKey, childValue]) =>
+      const orderedEntries = Object.entries(value as Record<string, unknown>).sort(([leftKey], [rightKey]) => {
+        const order = STRUCTURED_FIELD_ORDER[rootKey];
+        if (!order) {
+          return 0;
+        }
+
+        const leftIndex = order.indexOf(leftKey);
+        const rightIndex = order.indexOf(rightKey);
+
+        if (leftIndex === -1 && rightIndex === -1) return 0;
+        if (leftIndex === -1) return 1;
+        if (rightIndex === -1) return -1;
+        return leftIndex - rightIndex;
+      });
+
+      const hideRootPrefix =
+        rootKey === "passport_extraction" || rootKey === "supporter_passport_extraction";
+
+      return orderedEntries.flatMap(([childKey, childValue]) =>
         renderStructuredValue(
           childValue,
           childKey,
-          labelPrefix ? `${labelPrefix} · ${getLabelForKey(childKey)}` : getLabelForKey(childKey),
+          hideRootPrefix
+            ? getLabelForKey(childKey)
+            : labelPrefix
+              ? `${labelPrefix} · ${getLabelForKey(childKey)}`
+              : getLabelForKey(childKey),
           rootKey,
         ),
       );
@@ -1405,61 +2064,12 @@ export default function AdminPage() {
   const selectedPassportIdentity = getPassportIdentitySummary(selectedApp);
   const selectedServiceSections =
     selectedApp && isServiceTab(tab)
-      ? (() => {
-          const fieldMap = new Map(SERVICE_FIELDS[tab].map((field) => [field.key, field]));
-          const consumed = new Set<string>();
-          const sections = SERVICE_DETAIL_SECTIONS[tab]
-            .map((section) => {
-              const cards = section.fields.flatMap((fieldKey) => {
-                const field = fieldMap.get(fieldKey);
-                if (!field) {
-                  return [];
-                }
-
-                consumed.add(fieldKey);
-                return renderServiceField(selectedApp, field);
-              });
-
-              if (cards.length === 0) {
-                return null;
-              }
-
-              return (
-                <section key={section.key} className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                      {t(section.titleKey)}
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {cards}
-                  </div>
-                </section>
-              );
-            })
-            .filter(Boolean);
-
-          const remainingCards = SERVICE_FIELDS[tab]
-            .filter((field) => !consumed.has(field.key))
-            .flatMap((field) => renderServiceField(selectedApp, field));
-
-          if (remainingCards.length > 0) {
-            sections.push(
-              <section key="remaining" className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                    {t("admin.details")}
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {remainingCards}
-                </div>
-              </section>,
-            );
-          }
-
-          return sections;
-        })()
+      ? buildApplicationSections(selectedApp, tab)
+      : [];
+  const selectedLeadPassportIdentity = getPassportIdentitySummary(selectedLeadApplication);
+  const selectedLeadServiceSections =
+    selectedLeadApplication && selectedLeadApplicationTab
+      ? buildApplicationSections(selectedLeadApplication, selectedLeadApplicationTab)
       : [];
   function renderServiceField(
     item: AdminApplicationRecord,
@@ -1471,6 +2081,25 @@ export default function AdminPage() {
     }
 
     const label = getLabelForKey(field.key, field.labelKey);
+
+    if (field.key === "supporter_passport_extraction") {
+      const extraction = toPassportExtractionData(value);
+      const sex = extraction?.sex?.trim();
+
+      if (!sex) {
+        return [];
+      }
+
+      return [
+        renderDetailCard(
+          `${field.key}-sex`,
+          t("admin.genderShort"),
+          <span className="text-sm font-semibold text-slate-800 break-words">
+            {formatValue("sex", sex)}
+          </span>,
+        ),
+      ];
+    }
 
     if (field.isJson) {
       return renderStructuredValue(
@@ -1495,6 +2124,63 @@ export default function AdminPage() {
         isWideDetailKey(field.key, field.key, value),
       ),
       ];
+  }
+
+  function buildApplicationSections(
+    item: AdminApplicationRecord,
+    serviceTab: ServiceTab,
+  ) {
+    const fieldMap = new Map(SERVICE_FIELDS[serviceTab].map((field) => [field.key, field]));
+    const consumed = new Set<string>();
+    const sections = SERVICE_DETAIL_SECTIONS[serviceTab]
+      .map((section) => {
+        const cards = section.fields.flatMap((fieldKey) => {
+          const field = fieldMap.get(fieldKey);
+          if (!field) {
+            return [];
+          }
+
+          consumed.add(fieldKey);
+          return renderServiceField(item, field);
+        });
+
+        if (cards.length === 0) {
+          return null;
+        }
+
+        return (
+          <section key={section.key} className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                {t(section.titleKey)}
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{cards}</div>
+          </section>
+        );
+      })
+      .filter(Boolean);
+
+    const remainingCards = SERVICE_FIELDS[serviceTab]
+      .filter((field) => !consumed.has(field.key))
+      .flatMap((field) => renderServiceField(item, field));
+
+    if (remainingCards.length > 0) {
+      sections.push(
+        <section key="remaining" className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+              {t("admin.details")}
+            </h3>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {remainingCards}
+          </div>
+        </section>,
+      );
+    }
+
+    return sections;
   }
 
   const renderAdminStatCardSkeleton = (key: string) => (
@@ -1563,6 +2249,72 @@ export default function AdminPage() {
       )}
     </TableRow>
   );
+
+  const renderPagination = (
+    page: number,
+    pageCount: number,
+    onChange: (nextPage: number) => void,
+  ) => {
+    if (pageCount <= 1) {
+      return null;
+    }
+
+    return (
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={page <= 1}
+          onClick={() => onChange(page - 1)}
+          className="h-9 rounded-full px-4 text-xs font-semibold"
+        >
+          {t("common.back")}
+        </Button>
+        {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => (
+          <Button
+            key={pageNumber}
+            type="button"
+            variant={pageNumber === page ? "default" : "outline"}
+            size="sm"
+            onClick={() => onChange(pageNumber)}
+            className={cn(
+              "h-9 min-w-9 rounded-full px-3 text-xs font-semibold",
+              pageNumber === page && "bg-black text-white hover:bg-black/90",
+            )}
+          >
+            {pageNumber}
+          </Button>
+        ))}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={page >= pageCount}
+          onClick={() => onChange(page + 1)}
+          className="h-9 rounded-full px-4 text-xs font-semibold"
+        >
+          {t("common.next")}
+        </Button>
+      </div>
+    );
+  };
+
+  const dashboardClientPageCount = Math.max(1, Math.ceil(clients.length / dashboardClientsPageSize));
+  const clientsPageCount = Math.max(1, Math.ceil(clients.length / leadTablePageSize));
+  const prospectsPageCount = Math.max(1, Math.ceil(prospects.length / leadTablePageSize));
+
+  useEffect(() => {
+    setDashboardClientsPage((prev) => Math.min(prev, dashboardClientPageCount));
+  }, [dashboardClientPageCount]);
+
+  useEffect(() => {
+    setClientsPage((prev) => Math.min(prev, clientsPageCount));
+  }, [clientsPageCount]);
+
+  useEffect(() => {
+    setProspectsPage((prev) => Math.min(prev, prospectsPageCount));
+  }, [prospectsPageCount]);
 
   if (loading)
     return (
@@ -1713,6 +2465,10 @@ export default function AdminPage() {
   const activeLeadRows = tab === "prospects" ? prospects : clients;
   const activeLeadLoading = tab === "prospects" ? prospectsLoading : clientsLoading;
   const unreadNotifications = notifications.filter((notification) => !notification.read).length;
+  const currentLeadPage = tab === "prospects" ? prospectsPage : clientsPage;
+  const activeLeadPageCount = tab === "prospects" ? prospectsPageCount : clientsPageCount;
+  const dashboardClientRows = paginateRows(clients, dashboardClientsPage, dashboardClientsPageSize);
+  const paginatedLeadRows = paginateRows(activeLeadRows, currentLeadPage, leadTablePageSize);
 
   return (
     <div className="h-screen overflow-hidden bg-[#dcdad2] flex p-3 pl-0">
@@ -1863,11 +2619,6 @@ export default function AdminPage() {
         <main className="flex-1 overflow-y-auto px-8 pb-8">
           <div className="flex items-center justify-between mb-8 mt-2">
             <div className="flex items-center gap-3 text-slate-900">
-              {(() => {
-                const activeTab = tabs.find((item) => item.key === tab);
-                const ActiveIcon = activeTab?.icon || Grip;
-                return <ActiveIcon className="w-6 h-6 text-slate-800" />;
-              })()}
               <h2 className="text-[26px] font-extrabold tracking-tight font-heading">
                 {getTabLabel(tab)}
               </h2>
@@ -1958,42 +2709,55 @@ export default function AdminPage() {
                         ))}
                       </div>
                     ) : dashboardPanel === "activity" ? (
-                      dashboardActivity.length === 0 ? (
+                      dashboardInsightsLoading ? (
+                        <div className="flex h-full flex-col gap-6 overflow-y-auto pr-2 thin-scrollbar">
+                          {Array.from({ length: 3 }, (_, index) => (
+                            <div key={index} className="border-b border-white/10 pb-4 last:border-b-0">
+                              <Skeleton className="h-4 w-28 rounded-full bg-white/10" />
+                              <Skeleton className="mt-4 h-3 w-full rounded-full bg-white/10" />
+                              <Skeleton className="mt-2 h-3 w-10/12 rounded-full bg-white/10" />
+                              <Skeleton className="mt-2 h-3 w-8/12 rounded-full bg-white/10" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : !dashboardInsights ? (
                         <div className="flex h-full items-center justify-center text-sm font-medium text-slate-400">
                           {t("common.noData")}
                         </div>
                       ) : (
-                        <div className="flex h-full flex-col gap-3 overflow-y-auto pr-1">
-                          {dashboardActivity.map((activity) => (
-                            <div
-                              key={activity.id}
-                              className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-bold text-white">
-                                    {activity.client_leads?.name || activity.client_leads?.phone || "—"}
-                                  </p>
-                                  <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-                                    {getLeadActionLabel(activity.action)}
-                                  </p>
-                                </div>
-                                <span className="shrink-0 text-[11px] font-medium text-slate-500">
-                                  {formatLeadActivityDate(activity.created_at)}
-                                </span>
-                              </div>
-                              <p className="mt-2 text-sm text-slate-300 break-words">
-                                {getActivityDescription(activity)}
-                              </p>
-                              {(activity.service_key || activity.route) && (
-                                <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                  {activity.service_key && isServiceTabKey(activity.service_key)
-                                    ? getServiceLabel(activity.service_key)
-                                    : activity.route}
+                        <div className="flex h-full flex-col gap-6 overflow-y-auto pr-2 thin-scrollbar">
+                          <section className="border-b border-white/10 pb-5">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                              {t("admin.activityInsightsOverview")}
+                            </p>
+                            <p className="mt-3 text-sm leading-6 text-slate-200">
+                              {dashboardInsights.overview}
+                            </p>
+                          </section>
+                          <section className="border-b border-white/10 pb-5">
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                              {t("admin.activityInsightsIssues")}
+                            </p>
+                            <div className="mt-3 space-y-3">
+                              {dashboardInsights.issues.map((issue, index) => (
+                                <p key={index} className="text-sm leading-6 text-slate-200">
+                                  {issue}
                                 </p>
-                              )}
+                              ))}
                             </div>
-                          ))}
+                          </section>
+                          <section>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                              {t("admin.activityInsightsRecommendations")}
+                            </p>
+                            <div className="mt-3 space-y-3">
+                              {dashboardInsights.recommendations.map((recommendation, index) => (
+                                <p key={index} className="text-sm leading-6 text-slate-200">
+                                  {recommendation}
+                                </p>
+                              ))}
+                            </div>
+                          </section>
                         </div>
                       )
                     ) : (
@@ -2035,37 +2799,41 @@ export default function AdminPage() {
                       <div className="flex items-center gap-1.5 text-slate-800"><BarChart3 className="w-4 h-4" /> {t("admin.dashboard")}</div>
                     </div>
                   </div>
-                  <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex-1 h-[260px] overflow-auto flex flex-col">
+                  <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex-1 h-[260px] overflow-auto flex flex-col pb-0">
                     <div className="flex text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-3 px-4">
                       <div className="w-[30%]">{t("form.name")}</div>
                       <div className="w-[25%]">{t("form.phone")}</div>
-                      <div className="w-[20%]">{t("admin.status")}</div>
+                      <div className="w-[20%]">{t("admin.lastService")}</div>
                       <div className="w-[25%]">{t("admin.date")}</div>
                       <div className="w-10"></div>
                     </div>
-                    <div className="space-y-2">
+                    <div className="flex-1 space-y-2">
                        {dashboardLoading ? (
                           Array.from({ length: 3 }, (_, index) => renderDashboardClientSkeleton(`dashboard-client-${index}`))
                        ) : clients.length === 0 ? (
                           <div className="text-center py-8 text-sm font-medium text-slate-500">{t("common.noData")}</div>
-                       ) : clients.slice(0, 3).map((c, i) => (
-                        <div key={c.id} className="flex items-center px-4 py-3 bg-[#f5f4f2] hover:bg-[#eae8e6] transition-colors rounded-2xl text-[13px] font-bold text-slate-800">
+                       ) : dashboardClientRows.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => void openLeadDetails(c)}
+                          className="flex w-full cursor-pointer items-center rounded-2xl bg-[#f5f4f2] px-4 py-3 text-[13px] font-bold text-slate-800 transition-colors hover:bg-[#eae8e6]"
+                        >
                           <div className="w-[30%] truncate pr-2" title={c.name}>{c.name}</div>
                           <div className="w-[25%] text-slate-600 font-medium">{c.phone}</div>
                           <div className="w-[20%] text-slate-600 font-medium">
-                             <div className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] uppercase border", getLeadStatusClasses(c))}>
-                               {getLeadStatusLabel(c)}
+                             <div className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] uppercase border", getServiceBadgeClasses(c.last_service_key))}>
+                               {getLeadServiceLabel(c)}
                              </div>
                           </div>
                           <div className="w-[25%] text-slate-600 font-medium italic">{formatNullableDate(c.last_activity_at)}</div>
                           <div className="w-10 flex justify-end">
-                             <div className={cn("inline-flex w-9 h-[18px] rounded-full p-0.5", i % 2 === 0 ? "bg-black text-white" : "bg-slate-300")}>
-                               <div className={cn("w-3.5 h-3.5 bg-white rounded-full transition-transform shadow-sm", i % 2 === 0 ? "translate-x-4" : "")}></div>
-                             </div>
+                             <Eye className="h-4 w-4 text-slate-400" />
                           </div>
-                        </div>
+                        </button>
                       ))}
                     </div>
+                    {!dashboardLoading && renderPagination(dashboardClientsPage, dashboardClientPageCount, setDashboardClientsPage)}
                   </div>
                 </div>
               </div>
@@ -2073,7 +2841,7 @@ export default function AdminPage() {
           )}
 
           {tab === "settings" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl space-y-6">
               <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
                 <form onSubmit={saveSettings} className="p-8 space-y-8">
                   <div className="grid grid-cols-1 md:grid-cols-[185px_minmax(0,1fr)] gap-8 items-start">
@@ -2171,6 +2939,221 @@ export default function AdminPage() {
                   </div>
                 </form>
               </div>
+
+              <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                <form onSubmit={saveContactSettings} className="p-8 space-y-8">
+                  <div className="space-y-1">
+                    <h3 className="font-heading text-xl font-bold text-slate-900">
+                      {t("services.iletisim")}
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      {t("admin.contactSettingsDescription")}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("admin.contactSubtitleUz")}
+                      </label>
+                      <Input
+                        value={contactSettingsForm.subtitle_uz}
+                        onChange={(event) =>
+                          setContactSettingsForm((prev) => ({
+                            ...prev,
+                            subtitle_uz: event.target.value,
+                          }))
+                        }
+                        className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("admin.contactSubtitleTr")}
+                      </label>
+                      <Input
+                        value={contactSettingsForm.subtitle_tr}
+                        onChange={(event) =>
+                          setContactSettingsForm((prev) => ({
+                            ...prev,
+                            subtitle_tr: event.target.value,
+                          }))
+                        }
+                        className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("admin.addressUz")}
+                      </label>
+                      <Input
+                        value={contactSettingsForm.address_uz}
+                        onChange={(event) =>
+                          setContactSettingsForm((prev) => ({
+                            ...prev,
+                            address_uz: event.target.value,
+                          }))
+                        }
+                        className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("admin.addressTr")}
+                      </label>
+                      <Input
+                        value={contactSettingsForm.address_tr}
+                        onChange={(event) =>
+                          setContactSettingsForm((prev) => ({
+                            ...prev,
+                            address_tr: event.target.value,
+                          }))
+                        }
+                        className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("form.phone")}
+                      </label>
+                      <Input
+                        value={contactSettingsForm.phone}
+                        onChange={(event) =>
+                          setContactSettingsForm((prev) => ({
+                            ...prev,
+                            phone: event.target.value,
+                          }))
+                        }
+                        className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("form.email")}
+                      </label>
+                      <Input
+                        value={contactSettingsForm.email}
+                        onChange={(event) =>
+                          setContactSettingsForm((prev) => ({
+                            ...prev,
+                            email: event.target.value,
+                          }))
+                        }
+                        className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("admin.workingHoursUz")}
+                      </label>
+                      <Input
+                        value={contactSettingsForm.working_hours_uz}
+                        onChange={(event) =>
+                          setContactSettingsForm((prev) => ({
+                            ...prev,
+                            working_hours_uz: event.target.value,
+                          }))
+                        }
+                        className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("admin.workingHoursTr")}
+                      </label>
+                      <Input
+                        value={contactSettingsForm.working_hours_tr}
+                        onChange={(event) =>
+                          setContactSettingsForm((prev) => ({
+                            ...prev,
+                            working_hours_tr: event.target.value,
+                          }))
+                        }
+                        className="h-12 rounded-2xl border-slate-200 bg-slate-50 text-slate-900"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {t("iletisim.socialMedia")}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {t("admin.socialLinksDescription")}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">WhatsApp</label>
+                        <Input
+                          value={contactSettingsForm.whatsapp_url}
+                          onChange={(event) =>
+                            setContactSettingsForm((prev) => ({
+                              ...prev,
+                              whatsapp_url: event.target.value,
+                            }))
+                          }
+                          className="h-12 rounded-2xl border-slate-200 bg-white text-slate-900"
+                          placeholder="https://wa.me/..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Telegram</label>
+                        <Input
+                          value={contactSettingsForm.telegram_url}
+                          onChange={(event) =>
+                            setContactSettingsForm((prev) => ({
+                              ...prev,
+                              telegram_url: event.target.value,
+                            }))
+                          }
+                          className="h-12 rounded-2xl border-slate-200 bg-white text-slate-900"
+                          placeholder="https://t.me/..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Instagram</label>
+                        <Input
+                          value={contactSettingsForm.instagram_url}
+                          onChange={(event) =>
+                            setContactSettingsForm((prev) => ({
+                              ...prev,
+                              instagram_url: event.target.value,
+                            }))
+                          }
+                          className="h-12 rounded-2xl border-slate-200 bg-white text-slate-900"
+                          placeholder="https://instagram.com/..."
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Facebook</label>
+                        <Input
+                          value={contactSettingsForm.facebook_url}
+                          onChange={(event) =>
+                            setContactSettingsForm((prev) => ({
+                              ...prev,
+                              facebook_url: event.target.value,
+                            }))
+                          }
+                          className="h-12 rounded-2xl border-slate-200 bg-white text-slate-900"
+                          placeholder="https://facebook.com/..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button
+                      type="submit"
+                      className="h-11 px-6 rounded-full bg-black text-white hover:bg-black/90 font-semibold"
+                      disabled={contactSettingsSaving}
+                    >
+                      {contactSettingsSaving ? t("common.loading") : t("common.save")}
+                    </Button>
+                  </div>
+                </form>
+              </div>
             </motion.div>
           )}
 
@@ -2197,7 +3180,7 @@ export default function AdminPage() {
                      <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest">{t("form.name")}</TableHead>
                      <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest">{t("form.phone")}</TableHead>
                      <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest">{t(isLeadTab ? "admin.lastActivity" : "admin.date")}</TableHead>
-                     <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest text-center">{t("admin.status")}</TableHead>
+                     <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest text-center">{t(isLeadTab ? "admin.lastService" : "admin.status")}</TableHead>
                      <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest text-right pr-8">{t("admin.actions")}</TableHead>
                    </TableRow>
                  </TableHeader>
@@ -2208,8 +3191,8 @@ export default function AdminPage() {
                      <TableRow>
                        <TableCell colSpan={5} className="text-center text-slate-400 py-12">{t('common.noData')}</TableCell>
                      </TableRow>
-                   ) : activeLeadRows.map((lead) => (
-                       <TableRow key={lead.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors cursor-pointer" onClick={() => void openLeadDetails(lead)}>
+                   ) : paginatedLeadRows.map((lead) => (
+                       <TableRow key={lead.id} className="cursor-pointer border-b border-slate-50 transition-colors hover:bg-slate-50/50 last:border-0" onClick={() => void openLeadDetails(lead)}>
                        <TableCell className="font-bold text-slate-900 py-4 pl-8">{lead.name}</TableCell>
                        <TableCell className="text-slate-500 font-medium">{lead.phone}</TableCell>
                        <TableCell className="text-slate-400 font-medium">
@@ -2219,12 +3202,12 @@ export default function AdminPage() {
                          </div>
                        </TableCell>
                        <TableCell className="text-center">
-                         <span className={cn("inline-flex items-center px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider rounded-full border", getLeadStatusClasses(lead))}>
-                           {getLeadStatusLabel(lead)}
+                         <span className={cn("inline-flex items-center px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider rounded-full border", getServiceBadgeClasses(lead.last_service_key))}>
+                           {getLeadServiceLabel(lead)}
                          </span>
                        </TableCell>
                        <TableCell className="text-right pr-8">
-                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); void openLeadDetails(lead); }} className="text-slate-400 hover:text-slate-900 gap-1.5">
+                         <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); void openLeadDetails(lead); }} className="cursor-pointer gap-1.5 text-slate-400 hover:text-slate-900">
                            <Eye className="w-3.5 h-3.5"/> {t("admin.detail")}
                          </Button>
                        </TableCell>
@@ -2236,7 +3219,7 @@ export default function AdminPage() {
                        <TableCell colSpan={6} className="text-center text-slate-400 py-12">{t('common.noData')}</TableCell>
                      </TableRow>
                    ) : data.map((item, index) => (
-                     <TableRow key={item.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/30 transition-colors cursor-pointer" onClick={() => setSelectedApp(item)}>
+                     <TableRow key={item.id} className="cursor-pointer border-b border-slate-50 transition-colors hover:bg-slate-50/30 last:border-0" onClick={() => setSelectedApp(item)}>
                        <TableCell className="text-slate-400 font-medium text-center pl-8">{index + 1}</TableCell>
                        <TableCell className="font-semibold text-slate-900 py-4">{getClientName(item)}</TableCell>
                        <TableCell className="text-slate-500 font-medium">{getClientPhone(item)}</TableCell>
@@ -2255,6 +3238,13 @@ export default function AdminPage() {
                    ))}
                  </TableBody>
                </Table>
+               {isLeadTab && !activeLeadLoading && renderPagination(currentLeadPage, activeLeadPageCount, (nextPage) => {
+                 if (tab === "prospects") {
+                   setProspectsPage(nextPage);
+                 } else {
+                   setClientsPage(nextPage);
+                 }
+               })}
             </motion.div>
           )}
 
@@ -2329,6 +3319,11 @@ export default function AdminPage() {
               if (!open) {
                 setSelectedLead(null);
                 setLeadActivities([]);
+                setSelectedLeadApplication(null);
+                setSelectedLeadApplicationTab(null);
+                setSelectedLeadApplicationLoading(false);
+                setLeadSummary(null);
+                setLeadSummaryLoading(false);
               }
             }}
           >
@@ -2341,80 +3336,100 @@ export default function AdminPage() {
                         <h2 className="text-lg font-bold text-slate-900 leading-none">
                           {selectedLead.name}
                         </h2>
-                        <p className="text-sm text-slate-500 mt-1 font-medium">
-                          {selectedLead.phone}
-                        </p>
-                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {t("admin.status")}
-                            </p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {getLeadStatusLabel(selectedLead)}
-                            </p>
-                          </div>
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {t("admin.lastService")}
-                            </p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {getLeadServiceLabel(selectedLead)}
-                            </p>
-                          </div>
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              {t("admin.lastActivity")}
-                            </p>
-                            <p className="mt-1 text-sm font-semibold text-slate-900">
-                              {formatLeadActivityDate(selectedLead.last_activity_at)}
-                            </p>
-                          </div>
-                        </div>
                       </div>
-                      <span className={cn("inline-flex items-center px-3 py-1.5 text-[11px] uppercase font-bold tracking-wider rounded-full border", getLeadStatusClasses(selectedLead))}>
-                        {getLeadStatusLabel(selectedLead)}
-                      </span>
                     </div>
                   </div>
 
                   <div className="flex-1 overflow-y-auto bg-slate-50/50 px-6 py-6">
-                    <div className="space-y-3">
-                      {leadActivitiesLoading ? (
-                        Array.from({ length: 4 }, (_, index) => (
-                          <div key={index} className="rounded-2xl border border-slate-200 bg-white p-4">
-                            <Skeleton className="h-4 w-40 rounded-full" />
-                            <Skeleton className="mt-3 h-3 w-56 rounded-full" />
-                            <Skeleton className="mt-2 h-3 w-24 rounded-full" />
-                          </div>
-                        ))
-                      ) : leadActivities.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-medium text-slate-500">
-                          {t("common.noData")}
+                    <div className="space-y-6">
+                      <section className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                            {t("admin.details")}
+                          </h3>
                         </div>
-                      ) : (
-                        leadActivities.map((activity) => (
-                          <div key={activity.id} className="rounded-2xl border border-slate-200 bg-white p-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-900">
-                                  {getLeadActionLabel(activity.action)}
-                                </p>
-                                <p className="mt-1 text-sm text-slate-500 break-words">
-                                  {getActivityDescription(activity)}
-                                </p>
-                                {activity.route && (
-                                  <p className="mt-2 text-xs font-medium text-slate-400">
-                                    {activity.route}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                {formatLeadActivityDate(activity.created_at)}
-                              </div>
+
+                        {selectedLeadApplicationLoading ? (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                              {Array.from({ length: 4 }, (_, index) => (
+                                <div key={index} className="rounded-2xl border border-slate-200 bg-white p-4">
+                                  <Skeleton className="h-3 w-28 rounded-full bg-slate-200/80" />
+                                  <Skeleton className="mt-3 h-4 w-11/12 rounded-full bg-slate-200/80" />
+                                  <Skeleton className="mt-2 h-4 w-7/12 rounded-full bg-slate-200/80" />
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        ))
-                      )}
+                        ) : selectedLeadApplication && selectedLeadApplicationTab ? (
+                          <div className="space-y-4">
+                            {selectedLeadPassportIdentity.length > 0 && (
+                              <div
+                                className={cn(
+                                  "grid grid-cols-1 gap-3",
+                                  selectedLeadPassportIdentity.length >= 3
+                                    ? "sm:grid-cols-3"
+                                    : "sm:grid-cols-2",
+                                )}
+                              >
+                                {selectedLeadPassportIdentity.map((field) => (
+                                  <div
+                                    key={field.key}
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 min-w-0"
+                                  >
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                      {field.label}
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-900 break-words">
+                                      {field.value}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="space-y-3">{selectedLeadServiceSections}</div>
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-medium text-slate-500">
+                            {t("admin.noSubmittedDetails")}
+                          </div>
+                        )}
+                      </section>
+
+                      <section className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                            {t("admin.activity")}
+                          </h3>
+                        </div>
+                        <div className="space-y-3">
+                          {leadActivitiesLoading || leadSummaryLoading ? (
+                            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                              <Skeleton className="h-4 w-36 rounded-full bg-slate-200/80" />
+                              <Skeleton className="mt-4 h-3 w-full rounded-full bg-slate-200/80" />
+                              <Skeleton className="mt-2 h-3 w-11/12 rounded-full bg-slate-200/80" />
+                              <Skeleton className="mt-2 h-3 w-9/12 rounded-full bg-slate-200/80" />
+                              <Skeleton className="mt-5 h-3 w-40 rounded-full bg-slate-200/80" />
+                            </div>
+                          ) : leadSummary?.summary ? (
+                            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                              <p className="text-sm font-semibold text-slate-900">
+                                {t("admin.activitySummary")}
+                              </p>
+                              <p className="mt-3 text-sm leading-7 text-slate-600">
+                                {leadSummary.summary}
+                              </p>
+                              <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
+                                {t("admin.activitySummaryMeta", { count: leadActivities.length })}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-medium text-slate-500">
+                              {t("common.noData")}
+                            </div>
+                          )}
+                        </div>
+                      </section>
                     </div>
                   </div>
                 </>

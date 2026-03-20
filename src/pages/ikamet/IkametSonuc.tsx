@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Input, Label, Surface, TextField } from "@heroui/react";
-import { Upload, CheckCircle2, RotateCcw, FileText } from "lucide-react";
+import { Upload, RotateCcw, FileText } from "lucide-react";
 import { motion } from "framer-motion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SubmitButton } from "@/components/shared/SubmitButton";
@@ -130,6 +130,8 @@ export default function IkametSonuc() {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : t("common.error");
+      setSelectedFile(null);
+      setFileName("");
       setParsedData(emptyParsedData);
       setForm({
         registrationNumber: "",
@@ -156,7 +158,7 @@ export default function IkametSonuc() {
     try {
       const appointmentUrl = await uploadFile(selectedFile);
       if (!appointmentUrl) {
-        throw new Error("Appointment file upload failed.");
+        throw new Error(t("common.appointmentUploadFailed"));
       }
 
       const finalParsedData: AppointmentParsedData = {
@@ -350,7 +352,7 @@ export default function IkametSonuc() {
                 variant="secondary"
                 disabled={parsing}
                 onClick={() => inputRef.current?.click()}
-                className="rounded-2xl"
+                className="rounded-2xl border border-slate-300 bg-white hover:bg-slate-50"
               >
                 {parsing ? (
                   t("ikamet.parsingDocument")
@@ -361,23 +363,22 @@ export default function IkametSonuc() {
                   </>
                 )}
               </Button>
-              {selectedFile && (
-                <div className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span className="max-w-[220px] truncate">{fileName}</span>
-                </div>
-              )}
             </div>
             <input
               ref={inputRef}
               type="file"
-              accept=".pdf,image/*"
+              accept=".pdf,application/pdf"
               className="hidden"
               onChange={handleFileChange}
             />
             <p className="text-xs text-slate-400">
               {t("ikamet.uploadHint")}
             </p>
+            {selectedFile && (
+              <p className="text-xs font-medium text-slate-500">
+                {fileName}
+              </p>
+            )}
           </div>
 
           {visibleWarnings.length > 0 && (
@@ -433,7 +434,7 @@ export default function IkametSonuc() {
               value={form.email}
             >
               <Label>{t("form.email")}</Label>
-              <Input placeholder="email@example.com" />
+              <Input placeholder={t("form.email")} />
             </TextField>
           </div>
 

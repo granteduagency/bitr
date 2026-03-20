@@ -67,10 +67,12 @@ type JsonRecord = Record<string, unknown>;
 
 class HttpError extends Error {
   status: number;
+  errorCode: string;
 
-  constructor(status: number, message: string) {
-    super(message);
+  constructor(status: number, errorCode: string, message?: string) {
+    super(message || errorCode);
     this.status = status;
+    this.errorCode = errorCode;
   }
 }
 
@@ -114,7 +116,7 @@ async function docuPipeRequest<T>(
 
   if (!response.ok) {
     const message = await readErrorMessage(response);
-    throw new HttpError(response.status, message);
+    throw new HttpError(response.status, "docupipe_istek_hatasi", message);
   }
 
   return response.json() as Promise<T>;
@@ -154,13 +156,13 @@ async function waitForDocumentReady(apiKey: string, documentId: string) {
     }
 
     if (document.status === "failed" || document.status === "error") {
-      throw new HttpError(502, "DocuPipe document processing failed.");
+      throw new HttpError(502, "docupipe_belge_isleme_basarisiz");
     }
 
     await sleep(1500);
   }
 
-  throw new HttpError(504, "DocuPipe document processing timed out.");
+  throw new HttpError(504, "docupipe_belge_isleme_zaman_asimi");
 }
 
 async function waitForJobReady(apiKey: string, jobId: string, label: string) {
@@ -177,14 +179,15 @@ async function waitForJobReady(apiKey: string, jobId: string, label: string) {
     if (job.status === "failed" || job.status === "error") {
       throw new HttpError(
         502,
-        `${label} failed${typeof job.errorMessage === "string" ? `: ${job.errorMessage}` : "."}`,
+        "docupipe_is_basarisiz",
+        typeof job.errorMessage === "string" ? `${label}: ${job.errorMessage}` : label,
       );
     }
 
     await sleep(1500);
   }
 
-  throw new HttpError(504, `${label} timed out.`);
+  throw new HttpError(504, "docupipe_is_zaman_asimi", label);
 }
 
 async function waitForStandardizationReady(
@@ -207,7 +210,7 @@ async function waitForStandardizationReady(
       }
 
       if (standardization.status === "failed" || standardization.status === "error") {
-        throw new HttpError(502, "DocuPipe standardization failed.");
+        throw new HttpError(502, "docupipe_standardizasyon_basarisiz");
       }
     } catch (error) {
       if (error instanceof HttpError && error.status === 404) {
@@ -221,7 +224,7 @@ async function waitForStandardizationReady(
     await sleep(1500);
   }
 
-  throw new HttpError(504, "DocuPipe standardization timed out.");
+  throw new HttpError(504, "docupipe_standardizasyon_zaman_asimi");
 }
 
 const stringOrNull = (value: unknown) => {
@@ -257,11 +260,33 @@ function normalizePassportExtraction(data: JsonRecord) {
   };
 }
 
+function assertPassportExtractionValid(extraction: ReturnType<typeof normalizePassportExtraction>) {
+  const hasPrimaryName = Boolean(extraction.surname);
+  const hasAnyName = Boolean(extraction.given_names || extraction.full_name);
+  const evidenceScore = [
+    extraction.surname,
+    extraction.given_names || extraction.full_name,
+    extraction.nationality,
+    extraction.date_of_birth,
+    extraction.sex,
+    extraction.place_of_birth,
+    extraction.issuing_country,
+    extraction.passport_number,
+  ].filter(Boolean).length;
+
+  if (!hasPrimaryName || !hasAnyName || evidenceScore < 4) {
+    throw new HttpError(
+      400,
+      "pasaport_gecersiz_belge",
+    );
+  }
+}
+
 async function requireAdmin(req: Request) {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new HttpError(500, "Supabase environment is not configured.");
+    throw new HttpError(500, "supabase_ortami_yok");
   }
 
   const authorization = req.headers.get("Authorization");
@@ -270,7 +295,7 @@ async function requireAdmin(req: Request) {
     : "";
 
   if (!token) {
-    throw new HttpError(401, "Missing authorization token.");
+    throw new HttpError(401, "yetki_belirteci_yok");
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
@@ -280,7 +305,7 @@ async function requireAdmin(req: Request) {
   } = await supabase.auth.getUser(token);
 
   if (userError || !user) {
-    throw new HttpError(401, "Unauthorized.");
+    throw new HttpError(401, "yetkisiz");
   }
 
   const { data: role, error: roleError } = await supabase
@@ -295,7 +320,7 @@ async function requireAdmin(req: Request) {
   }
 
   if (!role) {
-    throw new HttpError(403, "Admin access required.");
+    throw new HttpError(403, "admin_yetkisi_gerekli");
   }
 }
 
@@ -305,13 +330,13 @@ Deno.serve(async (req) => {
   }
 
   if (req.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed." }, 405);
+    return jsonResponse({ errorCode: "yontem_izin_verilmiyor" }, 405);
   }
 
   try {
     const apiKey = Deno.env.get("DOCUPIPE_API_KEY");
     if (!apiKey) {
-      throw new HttpError(500, "DOCUPIPE_API_KEY is not configured.");
+      throw new HttpError(500, "docupipe_api_anahtari_yok");
     }
 
     const payload = await req.json() as {
@@ -328,7 +353,7 @@ Deno.serve(async (req) => {
       const contentsBase64 = payload.file?.contentsBase64?.trim();
 
       if (!filename || !contentsBase64) {
-        throw new HttpError(400, "Passport file payload is incomplete.");
+        throw new HttpError(400, "pasaport_dosyasi_eksik");
       }
 
       const schemaId = await ensurePassportSchema(apiKey);
@@ -364,7 +389,7 @@ Deno.serve(async (req) => {
       const standardizationId = standardize.standardizationIds?.[0];
       const standardizationJobId = standardize.standardizationJobIds?.[0];
       if (!standardizationId) {
-        throw new HttpError(502, "DocuPipe did not return a standardization id.");
+        throw new HttpError(502, "standardizasyon_kimligi_yok");
       }
 
       const standardization = await waitForStandardizationReady(
@@ -373,6 +398,7 @@ Deno.serve(async (req) => {
         standardizationJobId,
       );
       const extraction = normalizePassportExtraction((standardization.data || {}) as JsonRecord);
+      assertPassportExtractionValid(extraction);
 
       return jsonResponse({
         documentId: upload.documentId,
@@ -388,7 +414,7 @@ Deno.serve(async (req) => {
 
       const documentId = payload.documentId?.trim();
       if (!documentId) {
-        throw new HttpError(400, "documentId is required.");
+        throw new HttpError(400, "belge_kimligi_gerekli");
       }
 
       const download = await docuPipeRequest<{ url?: string }>(
@@ -397,16 +423,16 @@ Deno.serve(async (req) => {
       );
 
       if (!download.url) {
-        throw new HttpError(502, "DocuPipe did not return a download URL.");
+        throw new HttpError(502, "orijinal_belge_baglantisi_yok");
       }
 
       return jsonResponse({ url: download.url });
     }
 
-    throw new HttpError(400, "Unsupported action.");
+    throw new HttpError(400, "desteklenmeyen_islem");
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
-    const message = error instanceof Error ? error.message : "Unexpected error.";
-    return jsonResponse({ error: message }, status);
+    const errorCode = error instanceof HttpError ? error.errorCode : "beklenmeyen_hata";
+    return jsonResponse({ errorCode }, status);
   }
 });

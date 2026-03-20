@@ -3,12 +3,14 @@ import { useTranslation } from 'react-i18next';
 import { Input, Label, Surface, TextField } from '@heroui/react';
 import { TabSelector } from '@/components/shared/TabSelector';
 import { FileUpload } from '@/components/shared/FileUpload';
+import { CountrySelectField } from '@/components/shared/CountrySelectField';
 import { PassportUploadField } from '@/components/shared/PassportUploadField';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { recordStoredClientApplication } from '@/lib/client-tracking';
+import { getCountryCodeFromValue, getCountryNameFromCode } from '@/lib/countries';
 import {
   getPassportFatherName,
   getPassportGivenName,
@@ -25,7 +27,7 @@ import { motion } from 'framer-motion';
 import { Palmtree } from 'lucide-react';
 
 export default function SigortaTurizm() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sponsorType, setSponsorType] = useState('person');
@@ -45,7 +47,7 @@ export default function SigortaTurizm() {
       surname: prev.surname || getPassportSurname(extraction),
       father_name: prev.father_name || getPassportFatherName(extraction),
       birth_date: prev.birth_date || extraction.date_of_birth || '',
-      nationality: prev.nationality || extraction.nationality || '',
+      nationality: prev.nationality || getCountryCodeFromValue(extraction.nationality) || '',
       gender: prev.gender || gender,
     }));
   };
@@ -56,16 +58,34 @@ export default function SigortaTurizm() {
   const genderOpts = [{ value: 'male', label: t('common.male') }, { value: 'female', label: t('common.female') }];
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault();
+
+    if (!form.passport_url) {
+      toast({
+        title: t('common.error'),
+        description: t('common.missingFieldsDescription', {
+          fields: t('form.passport'),
+        }),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
       const applicationId = crypto.randomUUID();
+      const submissionData = {
+        ...form,
+        nationality: getCountryNameFromCode(form.nationality, i18n.language),
+        sponsor_nationality: getCountryNameFromCode(form.sponsor_nationality, i18n.language),
+      };
       const { error } = await supabase.from('sigorta_applications').insert({
         id: applicationId,
         client_id: cId,
         type: 'turizm',
         data: {
-          ...form,
+          ...submissionData,
           sponsorType,
           passport_document_id: passportMeta?.documentId ?? null,
           passport_extraction: passportMeta?.extraction ?? null,
@@ -80,7 +100,7 @@ export default function SigortaTurizm() {
           type: 'turizm',
           sponsorType,
           plan: form.plan,
-          nationality: form.nationality,
+          nationality: submissionData.nationality,
         },
       }).catch((trackingError) => {
         console.error('Tourism insurance tracking error:', trackingError);
@@ -142,10 +162,12 @@ export default function SigortaTurizm() {
               <Label>{t('sigorta.fatherNameShort')}</Label>
               <Input placeholder="Otangizning ismi" />
             </TextField>
-            <TextField fullWidth isRequired name="nationality" variant="secondary" onChange={v => u('nationality', v)} value={form.nationality}>
-              <Label>{t('form.nationality')}</Label>
-              <Input placeholder="O'zbekiston" />
-            </TextField>
+            <CountrySelectField
+              label={t('form.nationality')}
+              required
+              value={form.nationality}
+              onChange={(value) => u('nationality', value)}
+            />
           </div>
 
           {/* 3. Tug'ilgan sana & Jinsi */}
@@ -172,6 +194,7 @@ export default function SigortaTurizm() {
           {/* 6. Pasport (fayl) */}
           <PassportUploadField
             label={t('form.passport')}
+            required
             onChange={(value) => {
               setPassportMeta(value);
               u('passport_url', value?.storageUrl || '');
@@ -198,10 +221,11 @@ export default function SigortaTurizm() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <TextField fullWidth name="sponsor_nationality" variant="secondary" onChange={v => u('sponsor_nationality', v)} value={form.sponsor_nationality}>
-                <Label>{t('sigorta.sponsorNationality')}</Label>
-                <Input placeholder="Homiyning millati" />
-              </TextField>
+              <CountrySelectField
+                label={t('sigorta.sponsorNationality')}
+                value={form.sponsor_nationality}
+                onChange={(value) => u('sponsor_nationality', value)}
+              />
               <TextField fullWidth name="sponsor_passport_tc" variant="secondary" onChange={v => u('sponsor_passport_tc', v)} value={form.sponsor_passport_tc}>
                 <Label>{t('sigorta.sponsorPassportTc')}</Label>
                 <Input placeholder="Pasport yoki TC raqami" />

@@ -73,6 +73,60 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_settings: {
+        Row: {
+          address_tr: string
+          address_uz: string
+          created_at: string
+          email: string
+          facebook_url: string
+          id: number
+          instagram_url: string
+          phone: string
+          subtitle_tr: string
+          subtitle_uz: string
+          telegram_url: string
+          updated_at: string
+          whatsapp_url: string
+          working_hours_tr: string
+          working_hours_uz: string
+        }
+        Insert: {
+          address_tr?: string
+          address_uz?: string
+          created_at?: string
+          email?: string
+          facebook_url?: string
+          id?: number
+          instagram_url?: string
+          phone?: string
+          subtitle_tr?: string
+          subtitle_uz?: string
+          telegram_url?: string
+          updated_at?: string
+          whatsapp_url?: string
+          working_hours_tr?: string
+          working_hours_uz?: string
+        }
+        Update: {
+          address_tr?: string
+          address_uz?: string
+          created_at?: string
+          email?: string
+          facebook_url?: string
+          id?: number
+          instagram_url?: string
+          phone?: string
+          subtitle_tr?: string
+          subtitle_uz?: string
+          telegram_url?: string
+          updated_at?: string
+          whatsapp_url?: string
+          working_hours_tr?: string
+          working_hours_uz?: string
+        }
+        Relationships: []
+      }
       client_activity_logs: {
         Row: {
           action: string

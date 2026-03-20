@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input, Label, Surface, TextField } from '@heroui/react';
+import { CountrySelectField } from '@/components/shared/CountrySelectField';
 import { TabSelector } from '@/components/shared/TabSelector';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { recordStoredClientApplication } from '@/lib/client-tracking';
+import { getCountryNameFromCode } from '@/lib/countries';
 import { toast } from '@/hooks/use-toast';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -15,7 +17,7 @@ import { motion } from 'framer-motion';
 import { Plane } from 'lucide-react';
 
 export default function SigortaSeyahat() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [idType, setIdType] = useState('yabanci');
@@ -41,9 +43,14 @@ export default function SigortaSeyahat() {
     try {
       const cId = await getOrCreateClient(localStorage.getItem('client_name')!, localStorage.getItem('client_phone')!);
       const applicationId = crypto.randomUUID();
+      const submissionData = {
+        ...form,
+        nationality: getCountryNameFromCode(form.nationality, i18n.language),
+        target_country: getCountryNameFromCode(form.target_country, i18n.language),
+      };
       const { error } = await supabase
         .from('sigorta_applications')
-        .insert({ id: applicationId, client_id: cId, type: 'seyahat', data: { ...form, idType } });
+        .insert({ id: applicationId, client_id: cId, type: 'seyahat', data: { ...submissionData, idType } });
       if (error) throw error;
       await recordStoredClientApplication({
         route: typeof window !== 'undefined' ? window.location.pathname : '/dashboard/sigorta/seyahat',
@@ -52,7 +59,7 @@ export default function SigortaSeyahat() {
         details: {
           type: 'seyahat',
           idType,
-          targetCountry: form.target_country,
+          targetCountry: submissionData.target_country,
           duration: form.duration,
         },
       }).catch((trackingError) => {
@@ -111,14 +118,18 @@ export default function SigortaSeyahat() {
 
           {/* 2. Millati & Borish mamlakati */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <TextField fullWidth isRequired name="nationality" variant="secondary" onChange={v => u('nationality', v)} value={form.nationality}>
-              <Label>{t('form.nationality')}</Label>
-              <Input placeholder="O'zbekiston" />
-            </TextField>
-            <TextField fullWidth isRequired name="target_country" variant="secondary" onChange={v => u('target_country', v)} value={form.target_country}>
-              <Label>{t('sigorta.targetCountry')}</Label>
-              <Input placeholder="Bormoqchi bo'lgan mamlakat" />
-            </TextField>
+            <CountrySelectField
+              label={t('form.nationality')}
+              required
+              value={form.nationality}
+              onChange={value => u('nationality', value)}
+            />
+            <CountrySelectField
+              label={t('sigorta.targetCountry')}
+              required
+              value={form.target_country}
+              onChange={value => u('target_country', value)}
+            />
           </div>
 
           {/* 3. Maqsad & Muddat */}

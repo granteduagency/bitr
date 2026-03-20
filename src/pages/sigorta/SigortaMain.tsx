@@ -11,6 +11,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -64,6 +65,37 @@ export default function SigortaMain() {
       path: "/dashboard/sigorta/turizm",
     },
   ];
+
+  const ChoiceButton = ({
+    tone,
+    label,
+    icon: Icon,
+    onClick,
+  }: {
+    tone: {
+      border: string;
+      hover: string;
+      iconBg: string;
+      iconColor: string;
+    };
+    label: string;
+    icon: typeof HeartPulse;
+    onClick: () => void;
+  }) => (
+    <Button
+      type="button"
+      variant="outline"
+      className={`h-auto w-full justify-start rounded-full border bg-white px-5 py-4 text-left text-base font-semibold shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 ${tone.border} ${tone.hover}`}
+      onClick={onClick}
+    >
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${tone.iconBg}`}
+      >
+        <Icon className={`h-5 w-5 ${tone.iconColor}`} />
+      </div>
+      <span>{label}</span>
+    </Button>
+  );
 
   return (
     <div className="space-y-6">
@@ -125,78 +157,88 @@ export default function SigortaMain() {
 
       {/* Saglik Dialog */}
       <Dialog open={saglikOpen} onOpenChange={setSaglikOpen}>
-        <DialogContent className="rounded-[1.5rem] border-0 shadow-2xl max-w-sm mx-auto">
-          <DialogHeader>
+        <DialogContent
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          className="mx-auto w-[calc(100vw-2rem)] max-w-[24rem] overflow-hidden rounded-[2rem] border border-white/70 bg-[#fcfbf8] p-0 shadow-2xl"
+        >
+          <DialogHeader className="border-b border-slate-100 px-6 py-5">
             <DialogTitle className="font-heading text-lg">
               {t("sigorta.saglik")}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-3 pt-2">
-            <Button
-              variant="outline"
-              className="h-16 rounded-2xl justify-start gap-3 text-base border-slate-200 hover:border-rose-300 hover:bg-rose-50/50"
+          <div className="space-y-3 px-5 py-5">
+            <ChoiceButton
+              tone={{
+                border: "border-slate-200",
+                hover: "hover:border-rose-300 hover:bg-rose-50/50",
+                iconBg: "bg-[#F5D5D5]",
+                iconColor: "text-[#B85555]",
+              }}
+              label={t("form.foreign")}
+              icon={HeartPulse}
               onClick={() => {
                 setSaglikOpen(false);
                 navigate("/dashboard/sigorta/saglik?type=yabanci");
               }}
-            >
-              <div className="w-10 h-10 rounded-xl bg-[#F5D5D5] flex items-center justify-center">
-                <HeartPulse className="h-5 w-5 text-[#B85555]" />
-              </div>
-              {t("form.foreign")}
-            </Button>
-            <Button
-              variant="outline"
-              className="h-16 rounded-2xl justify-start gap-3 text-base border-slate-200 hover:border-green-300 hover:bg-green-50/50"
+            />
+            <ChoiceButton
+              tone={{
+                border: "border-slate-200",
+                hover: "hover:border-green-300 hover:bg-green-50/50",
+                iconBg: "bg-[#C8E6D0]",
+                iconColor: "text-[#3A8A56]",
+              }}
+              label={t("form.turkish")}
+              icon={HeartPulse}
               onClick={() => {
                 setSaglikOpen(false);
                 navigate("/dashboard/sigorta/saglik?type=turk");
               }}
-            >
-              <div className="w-10 h-10 rounded-xl bg-[#C8E6D0] flex items-center justify-center">
-                <HeartPulse className="h-5 w-5 text-[#3A8A56]" />
-              </div>
-              {t("form.turkish")}
-            </Button>
+            />
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Arac Dialog */}
       <Dialog open={aracOpen} onOpenChange={setAracOpen}>
-        <DialogContent className="rounded-[1.5rem] border-0 shadow-2xl max-w-sm mx-auto">
-          <DialogHeader>
+        <DialogContent
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          className="mx-auto w-[calc(100vw-2rem)] max-w-[24rem] overflow-hidden rounded-[2rem] border border-white/70 bg-[#fcfbf8] p-0 shadow-2xl"
+        >
+          <DialogHeader className="border-b border-slate-100 px-6 py-5">
             <DialogTitle className="font-heading text-lg">
               {t("sigorta.arac")}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-3 pt-2">
-            <Button
-              variant="outline"
-              className="h-16 rounded-2xl justify-start gap-3 text-base border-slate-200 hover:border-blue-300 hover:bg-blue-50/50"
+          <div className="space-y-3 px-5 py-5">
+            <ChoiceButton
+              tone={{
+                border: "border-slate-200",
+                hover: "hover:border-blue-300 hover:bg-blue-50/50",
+                iconBg: "bg-[#C8D5F5]",
+                iconColor: "text-[#4A6EC5]",
+              }}
+              label={t("sigorta.trafik")}
+              icon={Car}
               onClick={() => {
                 setAracOpen(false);
                 navigate("/dashboard/sigorta/arac/trafik");
               }}
-            >
-              <div className="w-10 h-10 rounded-xl bg-[#C8D5F5] flex items-center justify-center">
-                <Car className="h-5 w-5 text-[#4A6EC5]" />
-              </div>
-              {t("sigorta.trafik")}
-            </Button>
-            <Button
-              variant="outline"
-              className="h-16 rounded-2xl justify-start gap-3 text-base border-slate-200 hover:border-violet-300 hover:bg-violet-50/50"
+            />
+            <ChoiceButton
+              tone={{
+                border: "border-slate-200",
+                hover: "hover:border-violet-300 hover:bg-violet-50/50",
+                iconBg: "bg-[#E0D4F0]",
+                iconColor: "text-[#7B5EA7]",
+              }}
+              label={t("sigorta.kasko")}
+              icon={Car}
               onClick={() => {
                 setAracOpen(false);
                 navigate("/dashboard/sigorta/arac/kasko");
               }}
-            >
-              <div className="w-10 h-10 rounded-xl bg-[#E0D4F0] flex items-center justify-center">
-                <Car className="h-5 w-5 text-[#7B5EA7]" />
-              </div>
-              {t("sigorta.kasko")}
-            </Button>
+            />
           </div>
         </DialogContent>
       </Dialog>

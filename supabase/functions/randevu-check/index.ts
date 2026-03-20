@@ -130,6 +130,23 @@ const parseEnvList = (value: string | undefined, fallback: string[]) => {
 const CAPTCHA_MODELS = parseEnvList(Deno.env.get("OPENROUTER_MODEL"), ["google/gemma-3-27b-it:free"]);
 const VISION_MODELS = parseEnvList(Deno.env.get("OPENROUTER_VISION_MODEL"), CAPTCHA_MODELS);
 
+const PAGE_REQUEST_HEADERS = {
+  "User-Agent": USER_AGENT,
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.7,en;q=0.3",
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+  "Upgrade-Insecure-Requests": "1",
+};
+
+const CAPTCHA_REQUEST_HEADERS = {
+  "User-Agent": USER_AGENT,
+  Accept: "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+  "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.7,en;q=0.3",
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+};
+
 const decodeBase64 = (base64: string) =>
   Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
 
@@ -587,15 +604,15 @@ function buildParsedData(input: {
   parsed.suggestedCheckType = suggestCheckType(parsed.phone, parsed.email);
 
   if (!parsed.registrationNumber) {
-    parsed.warnings.push("Registration number could not be extracted.");
+    parsed.warnings.push("kayit_numarasi_ayiklanamadi");
   }
 
   if (!parsed.documentNumber) {
-    parsed.warnings.push("Document number could not be extracted.");
+    parsed.warnings.push("belge_numarasi_ayiklanamadi");
   }
 
   if (!parsed.phone && !parsed.email) {
-    parsed.warnings.push("Phone or email could not be extracted.");
+    parsed.warnings.push("telefon_veya_eposta_ayiklanamadi");
   }
 
   return parsed;
@@ -611,12 +628,12 @@ async function parseAppointmentFile(payload: {
   const contentsBase64 = normalizeString(payload.contentsBase64);
 
   if (!filename || !contentsBase64) {
-    throw new HttpError(400, "Appointment file payload is incomplete.");
+    throw new HttpError(400, "randevu_dosyasi_eksik");
   }
 
   const bytes = decodeBase64(contentsBase64);
   if (bytes.byteLength > MAX_FILE_SIZE_BYTES) {
-    throw new HttpError(400, "Appointment file is too large.");
+    throw new HttpError(400, "randevu_dosyasi_cok_buyuk");
   }
 
   if (mimeType === "application/pdf" || filename.toLowerCase().endsWith(".pdf")) {
@@ -642,7 +659,7 @@ async function parseAppointmentFile(payload: {
     });
   }
 
-  throw new HttpError(400, "Only PDF or image files are supported.");
+  throw new HttpError(400, "yalniz_pdf_veya_gorsel");
 }
 
 async function createSession(log: ReturnType<typeof createStepRecorder>["log"], cycle: number) {
@@ -655,9 +672,7 @@ async function createSession(log: ReturnType<typeof createStepRecorder>["log"], 
 
   const response = await fetch(`${E_IKAMET_BASE_URL}/Ikamet/DevamEdenBasvuruGiris`, {
     method: "GET",
-    headers: {
-      "User-Agent": USER_AGENT,
-    },
+    headers: PAGE_REQUEST_HEADERS,
   });
 
   if (!response.ok) {
@@ -740,7 +755,7 @@ async function loadCaptcha(
 
   const response = await fetch(captchaUrl, {
     headers: {
-      "User-Agent": USER_AGENT,
+      ...CAPTCHA_REQUEST_HEADERS,
       Cookie: cookieHeader(session.cookies),
       Referer: `${E_IKAMET_BASE_URL}/Ikamet/DevamEdenBasvuruGiris`,
     },
@@ -802,6 +817,10 @@ async function loginToEIkamet(
     method: "POST",
     headers: {
       "User-Agent": USER_AGENT,
+      Accept: "application/json, text/javascript, */*; q=0.01",
+      "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.7,en;q=0.3",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
       Cookie: cookieHeader(session.cookies),
       "Content-Type": "application/json",
       Origin: E_IKAMET_BASE_URL,
@@ -868,7 +887,7 @@ async function getAppointmentStatus(
 
   const optionsResponse = await fetch(`${E_IKAMET_BASE_URL}/Ikamet/DevamEdenBasvuruSecenekler`, {
     headers: {
-      "User-Agent": USER_AGENT,
+      ...PAGE_REQUEST_HEADERS,
       Cookie: cookieHeader(session.cookies),
       Referer: `${E_IKAMET_BASE_URL}/Ikamet/DevamEdenBasvuruGiris`,
     },
@@ -924,7 +943,7 @@ async function getAppointmentStatus(
     `${E_IKAMET_BASE_URL}/Ikamet/BasvuruDurum?basvuruKayitNo=${recordNumber}`,
     {
       headers: {
-        "User-Agent": USER_AGENT,
+        ...PAGE_REQUEST_HEADERS,
         Cookie: cookieHeader(session.cookies),
         Referer: `${E_IKAMET_BASE_URL}/Ikamet/DevamEdenBasvuruSecenekler`,
       },
@@ -992,19 +1011,19 @@ async function checkAppointmentStatus(payload: {
   });
 
   if (!registrationNumber || !documentNumber) {
-    throw new HttpError(400, "Registration number and document number are required.");
+    throw new HttpError(400, "kayit_ve_belge_numarasi_gerekli");
   }
 
   if (checkType !== "phone" && checkType !== "email") {
-    throw new HttpError(400, "checkType must be phone or email.");
+    throw new HttpError(400, "gecersiz_kontrol_turu");
   }
 
   if (checkType === "phone" && phone?.length !== 10) {
-    throw new HttpError(400, "A valid phone number is required for phone checks.");
+    throw new HttpError(400, "gecerli_telefon_gerekli");
   }
 
   if (checkType === "email" && !email) {
-    throw new HttpError(400, "A valid email is required for email checks.");
+    throw new HttpError(400, "gecerli_eposta_gerekli");
   }
 
   const cacheKey = `${registrationNumber}:${documentNumber}:${checkType}:${phone || email || ""}`;
@@ -1163,12 +1182,11 @@ async function checkAppointmentStatus(payload: {
       });
 
       if (attempt >= MAX_ATTEMPTS || cycle >= MAX_WORKFLOW_CYCLES) {
-        const message = error instanceof Error ? error.message : "Unknown error.";
         return {
           success: false,
           checkType,
           attempts: attempt,
-          error: message,
+          error: "Randevu tekshiruvini yakunlab bo'lmadi.",
           checkedAt: new Date().toISOString(),
           parsedData,
           randevuStatus: null,
@@ -1215,10 +1233,9 @@ const streamResponse = (
         try {
           await handler(emit);
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Unexpected error.";
           emit({
             type: "error",
-            error: message,
+            error: "So'rovni bajarib bo'lmadi.",
           });
         } finally {
           controller.close();
@@ -1240,7 +1257,7 @@ Deno.serve(async (req) => {
   }
 
   if (req.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed." }, 405);
+    return jsonResponse({ errorCode: "yontem_izin_verilmiyor" }, 405);
   }
 
   try {
@@ -1279,10 +1296,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    throw new HttpError(400, "Unsupported action.");
+    throw new HttpError(400, "desteklenmeyen_islem");
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
-    const message = error instanceof Error ? error.message : "Unexpected error.";
-    return jsonResponse({ error: message }, status);
+    const errorCode = error instanceof HttpError ? error.message : "beklenmeyen_hata";
+    return jsonResponse({ errorCode }, status);
   }
 });
