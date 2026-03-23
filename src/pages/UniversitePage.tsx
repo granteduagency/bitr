@@ -230,12 +230,12 @@ export default function UniversitePage() {
     () =>
       Array.from(
         new Set(
-          selectedUniversityPrograms
-            .map((program) => program.facultyName?.trim())
+          (selectedUni?.faculties ?? [])
+            .map((facultyName) => facultyName?.trim())
             .filter((facultyName): facultyName is string => Boolean(facultyName)),
         ),
       ).sort((left, right) => left.localeCompare(right, 'uz')),
-    [selectedUniversityPrograms],
+    [selectedUni],
   );
 
   const selectedUniversityProgramOptions = useMemo(() => {
@@ -248,7 +248,7 @@ export default function UniversitePage() {
     }
 
     return selectedUniversityPrograms.filter(
-      (program) => (program.facultyName ?? '') === applicationSelection.faculty,
+      (program) => (program.facultyName?.trim() ?? '') === applicationSelection.faculty,
     );
   }, [applicationSelection.faculty, selectedUniversityFaculties, selectedUniversityPrograms]);
 
@@ -273,8 +273,8 @@ export default function UniversitePage() {
     );
     const facultyOptions = Array.from(
       new Set(
-        activePrograms
-          .map((program) => program.facultyName?.trim())
+        university.faculties
+          .map((facultyName) => facultyName?.trim())
           .filter((facultyName): facultyName is string => Boolean(facultyName)),
       ),
     ).sort((left, right) => left.localeCompare(right, 'uz'));
@@ -481,7 +481,7 @@ export default function UniversitePage() {
                 value={applicationSelection.faculty || ''}
                 onValueChange={(value) => {
                   const facultyPrograms = selectedUniversityPrograms.filter(
-                    (program) => (program.facultyName ?? '') === value,
+                    (program) => (program.facultyName?.trim() ?? '') === value,
                   );
                   setApplicationSelection({
                     faculty: value,
