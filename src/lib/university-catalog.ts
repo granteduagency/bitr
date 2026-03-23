@@ -53,6 +53,12 @@ const SORT_LOCALE = "uz";
 
 const normalizeValue = (value?: string | null) => value?.trim() ?? "";
 
+export const splitProgramLanguages = (value?: string | null) =>
+  normalizeValue(value)
+    .split(/[/,;|]+/g)
+    .map((language) => language.trim())
+    .filter(Boolean);
+
 const uniqueSorted = (values: Array<string | null | undefined>) =>
   Array.from(
     new Set(values.map((value) => normalizeValue(value)).filter(Boolean)),
@@ -92,8 +98,11 @@ const matchesCatalogProgram = (
     return false;
   }
 
-  if (omittedKey !== "language" && filters.language && program.language !== filters.language) {
-    return false;
+  if (omittedKey !== "language" && filters.language) {
+    const languages = splitProgramLanguages(program.language);
+    if (!languages.includes(filters.language)) {
+      return false;
+    }
   }
 
   if (omittedKey !== "program" && filters.program && program.name !== filters.program) {
@@ -151,7 +160,7 @@ function collectOptionsForField(
       } else if (field === "program") {
         values.push(program.name);
       } else if (field === "language") {
-        values.push(program.language);
+        values.push(...splitProgramLanguages(program.language));
       }
     }
   }

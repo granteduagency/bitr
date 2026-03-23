@@ -29,6 +29,7 @@ import {
   fetchUniversityCatalog,
   filterUniversityCatalog,
   getMatchingCatalogPrograms,
+  splitProgramLanguages,
   type UniversityCatalogFilters,
   type UniversityCatalogUniversity,
 } from '@/lib/university-catalog';
@@ -269,7 +270,8 @@ export default function UniversitePage() {
         (!appliedFilters.degree || program.degree === appliedFilters.degree) &&
         (!appliedFilters.faculty || (program.facultyName ?? '') === appliedFilters.faculty) &&
         (!appliedFilters.program || program.name === appliedFilters.program) &&
-        (!appliedFilters.language || program.language === appliedFilters.language),
+        (!appliedFilters.language ||
+          splitProgramLanguages(program.language).includes(appliedFilters.language)),
     );
     const facultyOptions = Array.from(
       new Set(
