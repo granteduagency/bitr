@@ -140,7 +140,7 @@ export default function Dashboard() {
                       {t("calisma.yurtDisi")}
                     </p>
                     <p className="text-sm text-slate-500 mt-0.5">
-                      Chet elda ishlash uchun
+                      {t("calisma.description")}
                     </p>
                   </div>
                 </Button>

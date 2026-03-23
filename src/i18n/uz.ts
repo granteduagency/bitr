@@ -196,7 +196,7 @@ export const uz = {
     yurtIci: "Turkiyada ichidan topshirish",
     yurtDisi: "Turkiya tashqarisidan topshirish",
     selectType: "Ariza turini tanlang",
-    description: "Ishlash ruxsatnomasi uchun ma'lumotlarni kiriting",
+    description: "Ishlash ruxsatnomasi uchun",
     hasEmployer: "Ish beruvchingiz bormi ?",
     jobType: "Qanday turdagi ish uchun ?",
     jobTypePlaceholder: "Ish turini yozing",
