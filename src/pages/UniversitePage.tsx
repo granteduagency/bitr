@@ -53,6 +53,11 @@ const EMPTY_FILTERS: UniversityCatalogFilters = {
   language: '',
 };
 
+const EMPTY_APPLICATION_SELECTION = {
+  faculty: '',
+  programId: '',
+};
+
 const EMPTY_SELECT_VALUES = {
   faculty: '__empty-faculty__',
   program: '__empty-program__',
@@ -131,6 +136,7 @@ export default function UniversitePage() {
   const [degreeOptions, setDegreeOptions] = useState<string[]>([]);
   const [universities, setUniversities] = useState<UniversityCatalogUniversity[]>([]);
   const [selectedUni, setSelectedUni] = useState<UniversityCatalogUniversity | null>(null);
+  const [applicationSelection, setApplicationSelection] = useState(EMPTY_APPLICATION_SELECTION);
   const [passportMeta, setPassportMeta] = useState<PassportUploadValue | null>(null);
   const [search, setSearch] = useState<UniversityCatalogFilters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<UniversityCatalogFilters>(EMPTY_FILTERS);
@@ -214,6 +220,87 @@ export default function UniversitePage() {
     () => filterUniversityCatalog(universities, appliedFilters),
     [appliedFilters, universities],
   );
+
+  const selectedUniversityPrograms = useMemo(
+    () => selectedUni?.programs.filter((program) => program.isActive) ?? [],
+    [selectedUni],
+  );
+
+  const selectedUniversityFaculties = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedUniversityPrograms
+            .map((program) => program.facultyName?.trim())
+            .filter((facultyName): facultyName is string => Boolean(facultyName)),
+        ),
+      ).sort((left, right) => left.localeCompare(right, 'uz')),
+    [selectedUniversityPrograms],
+  );
+
+  const selectedUniversityProgramOptions = useMemo(() => {
+    if (selectedUniversityFaculties.length === 0) {
+      return selectedUniversityPrograms;
+    }
+
+    if (!applicationSelection.faculty) {
+      return [];
+    }
+
+    return selectedUniversityPrograms.filter(
+      (program) => (program.facultyName ?? '') === applicationSelection.faculty,
+    );
+  }, [applicationSelection.faculty, selectedUniversityFaculties, selectedUniversityPrograms]);
+
+  const selectedUniversityProgram = useMemo(
+    () =>
+      selectedUniversityPrograms.find(
+        (program) => program.id === applicationSelection.programId,
+      ) ?? null,
+    [applicationSelection.programId, selectedUniversityPrograms],
+  );
+
+  const requiresFacultySelection = selectedUniversityFaculties.length > 0;
+
+  const openUniversityApplication = (university: UniversityCatalogUniversity) => {
+    const activePrograms = university.programs.filter((program) => program.isActive);
+    const exactProgramMatch = activePrograms.find(
+      (program) =>
+        (!appliedFilters.degree || program.degree === appliedFilters.degree) &&
+        (!appliedFilters.faculty || (program.facultyName ?? '') === appliedFilters.faculty) &&
+        (!appliedFilters.program || program.name === appliedFilters.program) &&
+        (!appliedFilters.language || program.language === appliedFilters.language),
+    );
+    const facultyOptions = Array.from(
+      new Set(
+        activePrograms
+          .map((program) => program.facultyName?.trim())
+          .filter((facultyName): facultyName is string => Boolean(facultyName)),
+      ),
+    ).sort((left, right) => left.localeCompare(right, 'uz'));
+    const defaultFaculty =
+      exactProgramMatch?.facultyName ??
+      (facultyOptions.length === 1 ? facultyOptions[0] : '');
+    const defaultProgramId =
+      exactProgramMatch?.id ??
+      (() => {
+        if (!defaultFaculty) {
+          return activePrograms.length === 1 ? activePrograms[0].id : '';
+        }
+
+        const facultyPrograms = activePrograms.filter(
+          (program) => (program.facultyName ?? '') === defaultFaculty,
+        );
+        return facultyPrograms.length === 1 ? facultyPrograms[0].id : '';
+      })();
+
+    setSelectedUni(university);
+    setApplicationSelection({
+      faculty: defaultFaculty,
+      programId: defaultProgramId,
+    });
+    setStep('apply');
+  };
 
   const openResults = () => {
     setAppliedFilters(search);
@@ -300,6 +387,12 @@ export default function UniversitePage() {
     e.preventDefault();
 
     const missingFields: string[] = [];
+    if (requiresFacultySelection && !applicationSelection.faculty) {
+      missingFields.push(t('universite.faculty'));
+    }
+    if (!applicationSelection.programId) {
+      missingFields.push(t('universite.program'));
+    }
     if (!form.passport_url) {
       missingFields.push(t('universite.passportUpload'));
     }
@@ -337,10 +430,10 @@ export default function UniversitePage() {
         external_university_city: selectedUni?.city ?? null,
         external_university_country: selectedUni?.country ?? null,
         external_university_website: selectedUni?.website ?? null,
-        degree: appliedFilters.degree || null,
-        faculty: appliedFilters.faculty || null,
-        program: appliedFilters.program || null,
-        language: appliedFilters.language || null,
+        degree: selectedUniversityProgram?.degree ?? appliedFilters.degree ?? null,
+        faculty: applicationSelection.faculty || selectedUniversityProgram?.facultyName || null,
+        program: selectedUniversityProgram?.name ?? null,
+        language: selectedUniversityProgram?.language ?? appliedFilters.language ?? null,
         passport_document_id: passportMeta?.documentId ?? null,
         passport_extraction: passportMeta?.extraction ?? null,
         ...form,
@@ -353,10 +446,10 @@ export default function UniversitePage() {
         details: {
           workspaceName,
           universityName: selectedUni?.name ?? null,
-          degree: appliedFilters.degree || null,
-          faculty: appliedFilters.faculty || null,
-          program: appliedFilters.program || null,
-          language: appliedFilters.language || null,
+          degree: selectedUniversityProgram?.degree ?? appliedFilters.degree ?? null,
+          faculty: applicationSelection.faculty || selectedUniversityProgram?.facultyName || null,
+          program: selectedUniversityProgram?.name ?? null,
+          language: selectedUniversityProgram?.language ?? appliedFilters.language ?? null,
         },
       }).catch((trackingError) => {
         console.error('University application tracking error:', trackingError);
@@ -381,6 +474,66 @@ export default function UniversitePage() {
       </div>
       <form onSubmit={handleApply}>
         <Surface className="rounded-md p-6 md:p-8 space-y-6 bg-white/50">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>{t('universite.faculty')}</Label>
+              <Select
+                value={applicationSelection.faculty || ''}
+                onValueChange={(value) => {
+                  const facultyPrograms = selectedUniversityPrograms.filter(
+                    (program) => (program.facultyName ?? '') === value,
+                  );
+                  setApplicationSelection({
+                    faculty: value,
+                    programId: facultyPrograms.length === 1 ? facultyPrograms[0].id : '',
+                  });
+                }}
+              >
+                <SelectTrigger className="w-full" disabled={!requiresFacultySelection}>
+                  <SelectValue placeholder={t('common.select')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {renderSelectItems(
+                    selectedUniversityFaculties,
+                    EMPTY_SELECT_VALUES.faculty,
+                    t('universite.noFaculties'),
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>{t('universite.program')}</Label>
+              <Select
+                value={applicationSelection.programId || ''}
+                onValueChange={(value) =>
+                  setApplicationSelection((current) => ({
+                    ...current,
+                    programId: value,
+                  }))
+                }
+              >
+                <SelectTrigger
+                  className="w-full"
+                  disabled={!applicationSelection.faculty}
+                >
+                  <SelectValue placeholder={t('common.select')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectedUniversityProgramOptions.length === 0 ? (
+                    <SelectItem value={EMPTY_SELECT_VALUES.program} disabled>
+                      {t('universite.noPrograms')}
+                    </SelectItem>
+                  ) : (
+                    selectedUniversityProgramOptions.map((program) => (
+                      <SelectItem key={program.id} value={program.id}>
+                        {program.name} · {program.degree} · {program.language}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <PassportUploadField
               label={t('universite.passportUpload')}
@@ -460,8 +613,7 @@ export default function UniversitePage() {
                 }).catch((error) => {
                   console.error('University selection tracking error:', error);
                 });
-                setSelectedUni(uni);
-                setStep('apply');
+                openUniversityApplication(uni);
               }}
             >
               <div className="flex items-start gap-3">
@@ -643,7 +795,11 @@ export default function UniversitePage() {
             </TableHeader>
             <TableBody>
               {universities.map((uni) => (
-                <TableRow key={uni.id}>
+                <TableRow
+                  key={uni.id}
+                  className="cursor-pointer"
+                  onClick={() => openUniversityApplication(uni)}
+                >
                   <TableCell className="font-medium">{uni.name}</TableCell>
                   <TableCell>{uni.city}</TableCell>
                   <TableCell>{uni.country}</TableCell>
@@ -654,9 +810,9 @@ export default function UniversitePage() {
                       type="button"
                       variant="outline"
                       className="h-9 rounded-full"
-                      onClick={() => {
-                        setSelectedUni(uni);
-                        setStep('apply');
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openUniversityApplication(uni);
                       }}
                     >
                       {t('universite.apply')}
