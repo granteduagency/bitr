@@ -19,7 +19,9 @@ export type Database = {
           client_id: string | null
           created_at: string | null
           documents_url: string[] | null
+          has_employer: boolean | null
           id: string
+          job_type: string | null
           notes: string | null
           status: string | null
           type: string
@@ -28,7 +30,9 @@ export type Database = {
           client_id?: string | null
           created_at?: string | null
           documents_url?: string[] | null
+          has_employer?: boolean | null
           id?: string
+          job_type?: string | null
           notes?: string | null
           status?: string | null
           type: string
@@ -37,7 +41,9 @@ export type Database = {
           client_id?: string | null
           created_at?: string | null
           documents_url?: string[] | null
+          has_employer?: boolean | null
           id?: string
+          job_type?: string | null
           notes?: string | null
           status?: string | null
           type?: string

@@ -1,4 +1,5 @@
 import i18n from '@/i18n/config';
+import { invokeAdminFunction } from "@/lib/admin-functions";
 import { invokePublicFunction } from "@/lib/public-functions";
 
 export interface PassportExtractionData {
@@ -149,7 +150,7 @@ export async function extractPassportFromFile(file: File): Promise<PassportExtra
 }
 
 export async function getDocuPipeOriginalUrl(documentId: string): Promise<string> {
-  const data = await invokePublicFunction<{ url?: string }>("docupipe-passport", {
+  const data = await invokeAdminFunction<{ url?: string }>("docupipe-passport", {
     action: "original-url",
     documentId,
   });

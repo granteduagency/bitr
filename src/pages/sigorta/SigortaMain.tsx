@@ -43,13 +43,13 @@ export default function SigortaMain() {
     {
       icon: Plane,
       label: t("sigorta.seyahat"),
-      desc: "Sayohat himoyasi",
+      desc: "Sayohat uchun sug'urta",
       path: "/dashboard/sigorta/seyahat",
     },
     {
       icon: Mountain,
       label: t("sigorta.deprem"),
-      desc: "Zilzila sug'urtasi",
+      desc: "Zilzila sug'urtasi (uy uchun)",
       path: "/dashboard/sigorta/deprem",
     },
     {
@@ -61,7 +61,7 @@ export default function SigortaMain() {
     {
       icon: Palmtree,
       label: t("sigorta.turizm"),
-      desc: "Turizm paketi",
+      desc: "Turizm sug'urtasi",
       path: "/dashboard/sigorta/turizm",
     },
   ];

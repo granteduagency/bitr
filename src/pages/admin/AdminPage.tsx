@@ -25,6 +25,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -44,6 +51,8 @@ import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import {
   LogOut,
@@ -58,6 +67,7 @@ import {
   Bell,
   ChevronDown,
   ArrowUpRight,
+  Menu,
   Home,
   ShieldCheck,
   Plane,
@@ -123,8 +133,8 @@ const SERVICE_DETAIL_SECTIONS: Record<ServiceTab, DetailSectionConfig[]> = {
     { key: "case", titleKey: "admin.sectionCase", fields: ["full_name", "phone", "problem", "created_at", "status"] },
   ],
   calisma: [
-    { key: "overview", titleKey: "admin.sectionOverview", fields: ["type", "created_at", "status", "notes"] },
-    { key: "documents", titleKey: "admin.sectionDocuments", fields: ["documents_url"] },
+    { key: "overview", titleKey: "admin.sectionOverview", fields: ["type", "created_at", "status"] },
+    { key: "details", titleKey: "admin.sectionDetails", fields: ["has_employer", "job_type"] },
   ],
   universite: [
     { key: "overview", titleKey: "admin.sectionOverview", fields: ["external_university_name", "phone", "created_at", "status"] },
@@ -281,6 +291,7 @@ export default function AdminPage() {
   const [dashboardClientsPage, setDashboardClientsPage] = useState(1);
   const [clientsPage, setClientsPage] = useState(1);
   const [prospectsPage, setProspectsPage] = useState(1);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const sessionUserId = session?.user.id ?? null;
 
   useEffect(() => {
@@ -707,8 +718,8 @@ export default function AdminPage() {
     ],
     calisma: [
       { key: 'type', labelKey: 'admin.serviceType' },
-      { key: 'documents_url', labelKey: 'common.upload', isFile: true },
-      { key: 'notes', labelKey: 'admin.notes' },
+      { key: 'has_employer', labelKey: 'calisma.hasEmployer' },
+      { key: 'job_type', labelKey: 'calisma.jobType' },
       { key: 'status', labelKey: 'admin.status' },
       { key: 'created_at', labelKey: 'admin.createdAt', isDate: true },
     ],
@@ -2469,47 +2480,88 @@ export default function AdminPage() {
   const activeLeadPageCount = tab === "prospects" ? prospectsPageCount : clientsPageCount;
   const dashboardClientRows = paginateRows(clients, dashboardClientsPage, dashboardClientsPageSize);
   const paginatedLeadRows = paginateRows(activeLeadRows, currentLeadPage, leadTablePageSize);
+  const renderSidebarItems = (mobile = false) =>
+    tabs.map((tb) => {
+      const Icon = tb.icon || FileText;
+      const isActive = tab === tb.key;
+
+      return (
+        <Button
+          key={tb.key}
+          type="button"
+          variant={isActive ? "default" : "ghost"}
+          onClick={() => {
+            setTab(tb.key);
+            if (mobile) {
+              setMobileSidebarOpen(false);
+            }
+          }}
+          className={cn(
+            mobile
+              ? "h-12 w-full justify-start gap-3 rounded-2xl px-4 text-sm font-semibold"
+              : "w-11 h-11 flex items-center justify-center rounded-full transition-all group relative z-10",
+            isActive
+              ? "bg-black text-white"
+              : mobile
+                ? "text-slate-700 hover:bg-black/5"
+                : "text-slate-600 hover:bg-black/10",
+          )}
+        >
+          <Icon className={cn(mobile ? "w-4 h-4 shrink-0" : "w-5 h-5")} />
+          {mobile ? (
+            <span className="truncate">{tb.label}</span>
+          ) : (
+            <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[120] shadow-lg transition-opacity">
+              {tb.label}
+            </span>
+          )}
+        </Button>
+      );
+    });
 
   return (
-    <div className="h-screen overflow-hidden bg-[#dcdad2] flex p-3 pl-0">
+    <div className="h-screen overflow-hidden bg-[#dcdad2] flex p-1 lg:p-3 lg:pl-0 ">
       {/* Sidebar */}
-      <aside className="w-[88px] h-full shrink-0 bg-[#dcdad2] flex flex-col items-center py-8 relative z-30 hidden lg:flex overflow-visible">
-        <nav className="flex flex-col gap-1.5 overflow-visible">
-          {tabs.map((tb) => {
-            const Icon = tb.icon || FileText;
-            const isActive = tab === tb.key;
-            return (
-              <Button
-                key={tb.key}
-                type="button"
-                variant={isActive ? "default" : "ghost"}
-                onClick={() => setTab(tb.key)}
-                className={cn(
-                  "w-11 h-11 flex items-center justify-center rounded-full transition-all group relative z-10",
-                  isActive ? "bg-black text-white" : "text-slate-600 hover:bg-black/10"
-                )}
-              >
-                <Icon className="w-5 h-5" />
-                <span className="absolute left-14 top-1/2 -translate-y-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-[120] shadow-lg transition-opacity">
-                  {tb.label}
-                </span>
-              </Button>
-            );
-          })}
-        </nav>
+      <aside className="w-16 h-full shrink-0 bg-[#dcdad2]  lg:flex-col lg:items-center py-8 relative z-30 hidden lg:flex overflow-visible">
+        <nav className="flex flex-col gap-1.5 overflow-visible">{renderSidebarItems()}</nav>
       </aside>
 
       {/* Main Content */}
       <div className="flex-1 min-h-0 bg-[#f9f8f6] rounded-[2rem] flex flex-col min-w-0 overflow-hidden shadow-sm border border-black/5">
         {/* Header */}
-        <header className="h-20 px-8 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 text-slate-400 bg-white px-4 py-2.5 rounded-full shadow-sm w-72 border border-slate-100">
+        <header className="shrink-0 px-4 py-4 flex flex-col gap-3 min-[475px]:h-20 min-[475px]:px-8 min-[475px]:py-0 min-[475px]:flex-row min-[475px]:items-center min-[475px]:justify-between">
+          <div className="order-2 min-[475px]:order-1 flex items-center gap-2 text-slate-400 bg-white px-4 py-2.5 rounded-full shadow-sm w-full min-[475px]:w-72 border border-slate-100">
             <Search className="w-4 h-4 ml-1" />
             <input type="text" placeholder={t("admin.searchPlaceholder")} className="bg-transparent border-none outline-none text-sm font-medium text-slate-700 w-full placeholder:text-slate-400" />
           </div>
-          <div className="flex items-center gap-6">
-            <LanguageSwitcher />
-            <div className="flex items-center gap-4 text-slate-600 border-l border-slate-200 pl-6">
+          <div className="order-1 min-[475px]:order-2 flex w-full items-center justify-between gap-3 min-[475px]:w-auto min-[475px]:justify-end min-[475px]:gap-6">
+            <div className="flex items-center gap-2 min-[475px]:hidden">
+              <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 rounded-full border-slate-200 bg-white text-slate-700 shadow-sm"
+                  >
+                    <Menu className="w-5 h-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[280px] overflow-y-auto rounded-r-[2rem] border-slate-200 bg-[#f9f8f6] px-4 py-6">
+                  <SheetHeader className="mb-4 text-left">
+                    <SheetTitle className="font-heading text-xl font-extrabold text-slate-900">
+                      {t("admin.panel")}
+                    </SheetTitle>
+                  </SheetHeader>
+                  <nav className="flex max-h-[calc(100dvh-96px)] flex-col gap-2 overflow-y-auto pr-1">{renderSidebarItems(true)}</nav>
+                </SheetContent>
+              </Sheet>
+              <LanguageSwitcher />
+            </div>
+            <div className="hidden min-[475px]:block">
+              <LanguageSwitcher />
+            </div>
+            <div className="flex min-w-0 items-center gap-2 text-slate-600 min-[475px]:gap-4 min-[475px]:border-l min-[475px]:border-slate-200 min-[475px]:pl-6">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button type="button" variant="ghost" size="icon" className="relative h-10 w-10 rounded-full text-slate-500 hover:bg-white hover:text-black">
@@ -2575,12 +2627,12 @@ export default function AdminPage() {
               </DropdownMenu>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="ghost" className="ml-2 h-auto rounded-full px-2 py-1 hover:bg-slate-100">
-                    <div className="flex flex-col items-end">
-                      <span className="text-sm font-bold text-slate-800 leading-none">
+                  <Button type="button" variant="ghost" className="ml-1 h-auto max-w-[180px] rounded-full px-2 py-1 hover:bg-slate-100 min-[475px]:ml-2">
+                    <div className="min-w-0 hidden min-[475px]:flex flex-col items-end">
+                      <span className="max-w-[96px] truncate text-xs font-bold text-slate-800 leading-none min-[475px]:max-w-[140px] min-[475px]:text-sm">
                         {getAdminDisplayName(session)}
                       </span>
-                      <span className="text-[10px] font-semibold text-slate-400 mt-1 uppercase tracking-wider">
+                      <span className="mt-1 hidden text-[10px] font-semibold text-slate-400 uppercase tracking-wider min-[475px]:block">
                         {t("admin.panel")}
                       </span>
                     </div>
@@ -2616,19 +2668,39 @@ export default function AdminPage() {
         </header>
 
         {/* Body */}
-        <main className="flex-1 overflow-y-auto px-8 pb-8">
-          <div className="flex items-center justify-between mb-8 mt-2">
+        <main className="flex-1 overflow-y-auto px-4 pb-8 min-[475px]:px-8">
+          <div className="flex flex-col gap-3 mb-8 mt-2 min-[475px]:flex-row min-[475px]:items-center min-[475px]:justify-between">
             <div className="flex items-center gap-3 text-slate-900">
+              <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="hidden h-10 w-10 rounded-full border-slate-200 bg-white text-slate-700 shadow-sm min-[475px]:inline-flex lg:hidden"
+                  >
+                    <Menu className="w-5 h-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[280px] overflow-y-auto rounded-r-[2rem] border-slate-200 bg-[#f9f8f6] px-4 py-6">
+                  <SheetHeader className="mb-4 text-left">
+                    <SheetTitle className="font-heading text-xl font-extrabold text-slate-900">
+                      {t("admin.panel")}
+                    </SheetTitle>
+                  </SheetHeader>
+                  <nav className="flex max-h-[calc(100dvh-96px)] flex-col gap-2 overflow-y-auto pr-1">{renderSidebarItems(true)}</nav>
+                </SheetContent>
+              </Sheet>
               <h2 className="text-[26px] font-extrabold tracking-tight font-heading">
                 {getTabLabel(tab)}
               </h2>
             </div>
             {tab === "dashboard" && (
-              <div className="flex items-center gap-4 text-sm font-semibold text-slate-500">
-                <div className="flex items-center gap-2 hover:bg-black/5 px-3 py-1.5 rounded-xl transition-colors cursor-default">
+              <div className="flex w-full items-center justify-between gap-2 text-sm font-semibold text-slate-500 min-[475px]:w-auto min-[475px]:justify-end min-[475px]:gap-4">
+                <div className="flex items-center gap-2 hover:bg-black/5 px-3 py-1.5 rounded-xl transition-colors cursor-default text-xs min-[475px]:text-sm">
                   <Clock className="w-4 h-4" /> {new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
                 </div>
-                <div className="flex items-center gap-2 hover:bg-black/5 px-3 py-1.5 rounded-xl transition-colors text-slate-800 cursor-default">
+                <div className="flex items-center gap-2 hover:bg-black/5 px-3 py-1.5 rounded-xl transition-colors text-slate-800 cursor-default text-xs min-[475px]:text-sm">
                   <BarChart3 className="w-4 h-4 text-slate-400" />
                   {dashboardLoading ? <Skeleton className="h-4 w-8 rounded-full" /> : stats.total}
                 </div>
@@ -2639,7 +2711,7 @@ export default function AdminPage() {
           {tab === "dashboard" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
               {/* Bento Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 min-[375px]:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                 {dashboardLoading ? Array.from({ length: 5 }, (_, i) => renderAdminStatCardSkeleton(`dashboard-stat-${i}`)) : statCardsData.map((s, i) => (
                   <motion.div
                     key={i}
@@ -2799,8 +2871,8 @@ export default function AdminPage() {
                       <div className="flex items-center gap-1.5 text-slate-800"><BarChart3 className="w-4 h-4" /> {t("admin.dashboard")}</div>
                     </div>
                   </div>
-                  <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex-1 h-[260px] overflow-auto flex flex-col pb-0">
-                    <div className="flex text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-3 px-4">
+                  <div className="bg-white rounded-[2rem] p-4 min-[475px]:p-6 shadow-sm border border-slate-100 flex-1 h-[260px] overflow-auto flex flex-col pb-0">
+                    <div className="hidden min-[475px]:flex text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-3 px-4">
                       <div className="w-[30%]">{t("form.name")}</div>
                       <div className="w-[25%]">{t("form.phone")}</div>
                       <div className="w-[20%]">{t("admin.lastService")}</div>
@@ -2817,21 +2889,31 @@ export default function AdminPage() {
                           key={c.id}
                           type="button"
                           onClick={() => void openLeadDetails(c)}
-                          className="flex w-full cursor-pointer items-center rounded-2xl bg-[#f5f4f2] px-4 py-3 text-[13px] font-bold text-slate-800 transition-colors hover:bg-[#eae8e6]"
+                          className="flex w-full cursor-pointer flex-col gap-2 rounded-2xl bg-[#f5f4f2] px-4 py-3 text-left text-[13px] font-bold text-slate-800 transition-colors hover:bg-[#eae8e6] min-[475px]:flex-row min-[475px]:items-center"
                         >
-                          <div className="w-[30%] truncate pr-2" title={c.name}>{c.name}</div>
-                          <div className="w-[25%] text-slate-600 font-medium">{c.phone}</div>
-                          <div className="w-[20%] text-slate-600 font-medium">
+                          <div className="flex w-full items-start justify-between gap-3 min-[475px]:hidden">
+                            <div className="min-w-0">
+                              <div className="truncate pr-2" title={c.name}>{c.name}</div>
+                              <div className="mt-1 text-slate-600 font-medium">{c.phone}</div>
+                            </div>
+                            <Eye className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                          </div>
+                          <div className="hidden w-[30%] truncate pr-2 min-[475px]:block" title={c.name}>{c.name}</div>
+                          <div className="hidden w-[25%] text-slate-600 font-medium min-[475px]:block">{c.phone}</div>
+                          <div className="flex w-full flex-wrap items-center justify-between gap-2 min-[475px]:w-[20%] min-[475px]:justify-start text-slate-600 font-medium">
                              <div className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] uppercase border", getServiceBadgeClasses(c.last_service_key))}>
-                               {getLeadServiceLabel(c)}
-                             </div>
-                          </div>
-                          <div className="w-[25%] text-slate-600 font-medium italic">{formatNullableDate(c.last_activity_at)}</div>
-                          <div className="w-10 flex justify-end">
-                             <Eye className="h-4 w-4 text-slate-400" />
-                          </div>
-                        </button>
-                      ))}
+                                {getLeadServiceLabel(c)}
+                              </div>
+                              <span className="text-slate-600 font-medium italic text-xs min-[475px]:hidden">
+                                {formatNullableDate(c.last_activity_at)}
+                              </span>
+                           </div>
+                           <div className="hidden w-[25%] text-slate-600 font-medium italic min-[475px]:block">{formatNullableDate(c.last_activity_at)}</div>
+                           <div className="hidden w-10 justify-end min-[475px]:flex">
+                              <Eye className="h-4 w-4 text-slate-400" />
+                           </div>
+                         </button>
+                       ))}
                     </div>
                     {!dashboardLoading && renderPagination(dashboardClientsPage, dashboardClientPageCount, setDashboardClientsPage)}
                   </div>
@@ -3159,21 +3241,18 @@ export default function AdminPage() {
 
           {/* Other Tabs Rendering... */}
           {tab !== "dashboard" && tab !== "settings" && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-               <div className="px-8 pt-7 pb-4 border-b border-slate-50">
-                 <h3 className="text-xl font-bold text-slate-900 font-heading">
-                     {getTabLabel(tab)}
-                 </h3>
-                 <p className="text-slate-400 text-sm mt-0.5">
-                   {(isLeadTab ? activeLeadLoading : dataLoading)
-                     ? ''
-                     : (isLeadTab ? activeLeadRows.length : data.length) > 0
+             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden h-full">
+                <div className="px-4 py-4 border-b border-slate-50 min-[475px]:px-8">
+                  <p className="text-slate-400 text-sm">
+                    {(isLeadTab ? activeLeadLoading : dataLoading)
+                      ? ''
+                      : (isLeadTab ? activeLeadRows.length : data.length) > 0
                        ? `${isLeadTab ? activeLeadRows.length : data.length} ${t(isLeadTab ? 'admin.totalContacts' : 'admin.totalApplications')}`
                        : ''}
                  </p>
                </div>
                
-               <Table>
+                <Table className="min-w-[640px]">
                  <TableHeader>
                    <TableRow className="border-b border-slate-50 hover:bg-transparent">
                      {!isLeadTab && <TableHead className="font-bold text-slate-400 uppercase text-[10px] tracking-widest w-12 text-center pl-8">#</TableHead>}
@@ -3251,6 +3330,12 @@ export default function AdminPage() {
           {/* Application Details Dialog */}
           <Dialog open={!!selectedApp} onOpenChange={(open) => !open && setSelectedApp(null)}>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 bg-white rounded-xl border border-slate-200 shadow-2xl outline-none">
+              <DialogTitle className="sr-only">
+                {selectedApp ? `${getTabLabel(tab)} · ${getClientName(selectedApp)}` : getTabLabel(tab)}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                {selectedApp ? `${getClientName(selectedApp)} · ${getClientPhone(selectedApp)}` : t("admin.detail")}
+              </DialogDescription>
               {/* Header */}
               <div className="px-6 py-5 border-b border-slate-100 shrink-0">
                 <div className="flex items-center justify-between">
@@ -3328,6 +3413,12 @@ export default function AdminPage() {
             }}
           >
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 bg-white rounded-xl border border-slate-200 shadow-2xl outline-none">
+              <DialogTitle className="sr-only">
+                {selectedLead?.name || t("admin.clients")}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                {selectedLead?.phone || t("admin.detail")}
+              </DialogDescription>
               {selectedLead && (
                 <>
                   <div className="px-6 py-5 border-b border-slate-100 shrink-0">
@@ -3446,6 +3537,12 @@ export default function AdminPage() {
             }}
           >
             <DialogContent className="max-w-4xl bg-white p-4 rounded-2xl border border-slate-200 shadow-2xl">
+              <DialogTitle className="sr-only">
+                {imagePreview?.label || t("admin.imagePreview")}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                {t("admin.imagePreview")}
+              </DialogDescription>
               {imagePreview && (
                 <div className="space-y-3">
                   <div>

@@ -6,6 +6,16 @@ import { PassportUploadField } from '@/components/shared/PassportUploadField';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
 import {
@@ -609,6 +619,61 @@ export default function UniversitePage() {
           </>
         )}
       </Surface>
+      {!catalogError && universities.length > 0 ? (
+        <Surface className="rounded-md p-6 md:p-8 space-y-4 bg-white/50">
+          <div>
+            <h3 className="font-heading text-xl font-extrabold text-slate-900">
+              {t('universite.allUniversities')}
+            </h3>
+            <p className="text-slate-400 text-sm mt-1">
+              {t('universite.allUniversitiesDescription')}
+            </p>
+          </div>
+          <Table>
+            <TableCaption>{t('universite.allUniversitiesDescription')}</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('admin.universityName')}</TableHead>
+                <TableHead>{t('universite.city')}</TableHead>
+                <TableHead>{t('universite.country')}</TableHead>
+                <TableHead>{t('universite.facultyCount')}</TableHead>
+                <TableHead>{t('universite.programCount')}</TableHead>
+                <TableHead className="text-right">{t('admin.actions')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {universities.map((uni) => (
+                <TableRow key={uni.id}>
+                  <TableCell className="font-medium">{uni.name}</TableCell>
+                  <TableCell>{uni.city}</TableCell>
+                  <TableCell>{uni.country}</TableCell>
+                  <TableCell>{uni.faculties.length}</TableCell>
+                  <TableCell>{uni.programs.length}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-full"
+                      onClick={() => {
+                        setSelectedUni(uni);
+                        setStep('apply');
+                      }}
+                    >
+                      {t('universite.apply')}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={5}>{t('universite.allUniversities')}</TableCell>
+                <TableCell className="text-right">{universities.length}</TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </Surface>
+      ) : null}
     </motion.div>
   );
 }

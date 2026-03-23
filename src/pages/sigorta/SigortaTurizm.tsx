@@ -138,7 +138,7 @@ export default function SigortaTurizm() {
         </div>
         <div>
           <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-slate-900">{t('sigorta.turizm')}</h2>
-          <p className="text-slate-400 text-sm mt-0.5">Turizm paketi sug'urtasi</p>
+          <p className="text-slate-400 text-sm mt-0.5">Turizm sug'urtasi</p>
         </div>
       </div>
 

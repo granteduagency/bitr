@@ -1,10 +1,16 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
-import { Surface, Label, TextField, TextArea } from '@heroui/react';
-import { FileUpload } from '@/components/shared/FileUpload';
+import { Input, Surface, Label, TextField } from '@heroui/react';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase, getOrCreateClient } from '@/lib/supabase';
 import { notifyAdminNewApplication } from '@/lib/admin-push';
 import { recordStoredClientApplication } from '@/lib/client-tracking';
@@ -17,23 +23,39 @@ export default function CalismaForm() {
   const { type } = useParams<{ type: string }>();
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [docs, setDocs] = useState<string[]>([]);
-  const [notes, setNotes] = useState('');
+  const [form, setForm] = useState({
+    full_name: localStorage.getItem('client_name') || '',
+    phone: localStorage.getItem('client_phone') || '',
+    has_employer: '',
+    job_type: '',
+  });
+
+  const updateForm = (key: keyof typeof form, value: string) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
 
   if (submitted) return <SuccessScreen />;
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoading(true);
+    e.preventDefault();
+
+    if (!form.full_name || !form.phone || !form.has_employer || !form.job_type) {
+      toast({ title: t('common.error'), description: t('common.required'), variant: 'destructive' });
+      return;
+    }
+
+    setLoading(true);
     try {
-      const clientName = localStorage.getItem('client_name') || '';
-      const clientPhone = localStorage.getItem('client_phone') || '';
-      const clientId = await getOrCreateClient(clientName, clientPhone);
+      localStorage.setItem('client_name', form.full_name);
+      localStorage.setItem('client_phone', form.phone);
+
+      const clientId = await getOrCreateClient(form.full_name, form.phone);
       const applicationId = crypto.randomUUID();
       const { error } = await supabase.from('calisma_applications').insert({
         id: applicationId,
         client_id: clientId,
         type: type === 'yurt-ici' ? 'yurt_ici' : 'yurt_disi',
-        documents_url: docs, notes,
+        has_employer: form.has_employer === 'yes',
+        job_type: form.job_type,
       });
       if (error) throw error;
       await recordStoredClientApplication({
@@ -42,8 +64,8 @@ export default function CalismaForm() {
         referenceId: applicationId,
         details: {
           type: type === 'yurt-ici' ? 'yurt_ici' : 'yurt_disi',
-          documents: docs.length,
-          notes,
+          hasEmployer: form.has_employer === 'yes',
+          jobType: form.job_type,
         },
       }).catch((trackingError) => {
         console.error('Work permit tracking error:', trackingError);
@@ -68,18 +90,35 @@ export default function CalismaForm() {
           <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-slate-900">
             {isYurtIci ? t('calisma.yurtIci') : t('calisma.yurtDisi')}
           </h2>
-          <p className="text-slate-400 text-sm mt-0.5">Hujjatlaringizni yuklang</p>
+          <p className="text-slate-400 text-sm mt-0.5">{t('calisma.description')}</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit}>
         <Surface className="rounded-md p-6 md:p-8 space-y-6 bg-white/50">
-          <FileUpload label={t('common.upload') + ' 1'} onUpload={(url) => setDocs(prev => [...prev.filter(Boolean), url])} accept="image/*,.pdf" />
-          <FileUpload label={t('common.upload') + ' 2'} onUpload={(url) => setDocs(prev => [...prev.filter(Boolean), url])} accept="image/*,.pdf" />
-
-          <TextField fullWidth name="notes" variant="secondary" onChange={setNotes} value={notes}>
-            <Label>{t('admin.notes')} <span className="text-muted text-xs font-normal">({t('common.optional')})</span></Label>
-            <TextArea placeholder="..." rows={4} />
+          <TextField fullWidth isRequired name="full_name" variant="secondary" onChange={(value) => updateForm('full_name', value)} value={form.full_name}>
+            <Label>{t('form.fullName')}</Label>
+            <Input placeholder={t('landing.namePlaceholder')} />
+          </TextField>
+          <TextField fullWidth isRequired name="phone" type="tel" variant="secondary" onChange={(value) => updateForm('phone', value)} value={form.phone}>
+            <Label>{t('form.phone')}</Label>
+            <Input placeholder="+90 5XX XXX XX XX" />
+          </TextField>
+          <div className="space-y-1.5">
+            <Label>{t('calisma.hasEmployer')}</Label>
+            <Select value={form.has_employer} onValueChange={(value) => updateForm('has_employer', value)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={t('common.select')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="yes">{t('common.yes')}</SelectItem>
+                <SelectItem value="no">{t('common.no')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <TextField fullWidth isRequired name="job_type" variant="secondary" onChange={(value) => updateForm('job_type', value)} value={form.job_type}>
+            <Label>{t('calisma.jobType')}</Label>
+            <Input placeholder={t('calisma.jobTypePlaceholder')} />
           </TextField>
 
           <SubmitButton isPending={loading} />

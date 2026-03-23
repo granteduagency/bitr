@@ -54,17 +54,23 @@ const translateAdminFunctionError = (message: string) => {
   return translations[normalized] || i18n.t("common.requestFailed");
 };
 
-export async function invokeAdminFunction<T>(name: string, body: unknown): Promise<T> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+const getAdminAccessToken = async (forceRefresh = false) => {
+  const sessionResult = forceRefresh
+    ? await supabase.auth.refreshSession()
+    : await supabase.auth.getSession();
 
+  const session = sessionResult.data.session;
   const token = session?.access_token?.trim();
+
   if (!token) {
     throw new Error(i18n.t("common.requestFailed"));
   }
 
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+  return token;
+};
+
+const executeAdminFunctionRequest = async (name: string, body: unknown, token: string) =>
+  fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -73,6 +79,21 @@ export async function invokeAdminFunction<T>(name: string, body: unknown): Promi
     },
     body: JSON.stringify(body),
   });
+
+export async function invokeAdminFunction<T>(name: string, body: unknown): Promise<T> {
+  let response = await executeAdminFunctionRequest(
+    name,
+    body,
+    await getAdminAccessToken(false),
+  );
+
+  if (response.status === 401) {
+    response = await executeAdminFunctionRequest(
+      name,
+      body,
+      await getAdminAccessToken(true),
+    );
+  }
 
   const raw = await response.text();
   let payload: unknown = null;

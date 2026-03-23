@@ -119,7 +119,7 @@ export default function Dashboard() {
                       {t("calisma.yurtIci")}
                     </p>
                     <p className="text-sm text-slate-500 mt-0.5">
-                      Turkiya ichida ishlash uchun
+                      {t("calisma.description")}
                     </p>
                   </div>
                 </Button>
