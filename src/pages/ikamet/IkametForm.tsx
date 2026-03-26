@@ -7,6 +7,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { FileUpload } from '@/components/shared/FileUpload';
 import { PassportUploadField } from '@/components/shared/PassportUploadField';
+import { IntroVideoOverlay } from '@/components/shared/IntroVideoOverlay';
 import { TabSelector } from '@/components/shared/TabSelector';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
 import { SubmitButton } from '@/components/shared/SubmitButton';
@@ -32,6 +33,8 @@ export default function IkametForm({ category, type }: IkametFormProps) {
   const navigate = useNavigate();
   const isStudentFirstApplication = category === 'ilk_kez' && type === 'ogrenci';
   const isShortTermFirstApplication = category === 'ilk_kez' && type === 'kisa_donem';
+  const isLongTermFirstApplication = category === 'ilk_kez' && type === 'uzun_donem';
+  const isFamilyFirstApplication = category === 'ilk_kez' && type === 'aile';
   const isStudentRenewalApplication = category === 'uzatma' && type === 'ogrenci';
   const isStudentTransitionApplication = category === 'gecis' && type === 'ogrenci';
   const isStudentSecondaryApplication = isStudentRenewalApplication || isStudentTransitionApplication;
@@ -205,6 +208,30 @@ export default function IkametForm({ category, type }: IkametFormProps) {
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="space-y-6">
+      <IntroVideoOverlay
+        enabled={isStudentFirstApplication}
+        storageKey="ikamet:ilk-kez:ogrenci-video-seen"
+        videoId="lwEtPWMflMI"
+        title={t('ikamet.ogrenciVideoTitle')}
+      />
+      <IntroVideoOverlay
+        enabled={isFamilyFirstApplication}
+        storageKey="ikamet:ilk-kez:aile-video-seen"
+        videoId="yUP_t3Qkia0"
+        title={t('ikamet.aileVideoTitle')}
+      />
+      <IntroVideoOverlay
+        enabled={isShortTermFirstApplication}
+        storageKey="ikamet:ilk-kez:kisa-donem-video-seen"
+        videoId="B9-z41Idtk8"
+        title={t('ikamet.kisaDonemVideoTitle')}
+      />
+      <IntroVideoOverlay
+        enabled={isLongTermFirstApplication && uzunDonemEligible === true}
+        storageKey="ikamet:ilk-kez:uzun-donem-video-seen"
+        videoId="PiTcel9cqa0"
+        title={t('ikamet.uzunDonemVideoTitle')}
+      />
       <div>
         <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-slate-900">{t(`ikamet.${titleKey}`)}</h2>
         <p className="text-slate-400 text-sm mt-1">Ma'lumotlarni to'ldiring</p>

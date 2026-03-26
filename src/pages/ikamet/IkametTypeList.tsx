@@ -8,6 +8,7 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { IntroVideoOverlay } from "@/components/shared/IntroVideoOverlay";
 
 const CARD_STYLES = [
   { bg: "#C8D5F5", color: "#4A6EC5" },
@@ -56,9 +57,16 @@ export default function IkametTypeList({
     : basePath.includes("gecis")
       ? t("ikamet.gecis")
       : t("ikamet.ilkKez");
+  const isFirstApplicationList = basePath === "/dashboard/ikamet/ilk-kez";
 
   return (
     <div className="space-y-6">
+      <IntroVideoOverlay
+        enabled={isFirstApplicationList}
+        storageKey="ikamet:ilk-kez:list-video-seen"
+        videoId="ZiXLjxYGcUQ"
+        title={t("ikamet.ilkKezVideoTitle")}
+      />
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}

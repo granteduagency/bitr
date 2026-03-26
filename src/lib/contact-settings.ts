@@ -20,17 +20,17 @@ export type ContactSettingsRow = {
 
 export const DEFAULT_CONTACT_SETTINGS: ContactSettingsRow = {
   id: 1,
-  subtitle_uz: "Biz bilan bog'laning",
-  subtitle_tr: "Bizimle iletişime geçin",
-  address_uz: "Istanbul, Turkiya",
-  address_tr: "İstanbul, Türkiye",
-  phone: "+90 212 XXX XX XX",
-  email: "info@viza.com",
+  subtitle_uz: "Biz bilan quyidagi aloqa kanallari orqali bog'laning",
+  subtitle_tr: "Aşağıdaki iletişim kanallarından bize ulaşın",
+  address_uz: "Molla Gürani Mah. Turgut Özal Millet Cad. Arslanbey Apt. No: 48. İç Kapı No: 15 Fatih İSTANBUL",
+  address_tr: "Molla Gürani Mah. Turgut Özal Millet Cad. Arslanbey Apt. No: 48. İç Kapı No: 15 Fatih İSTANBUL",
+  phone: "+90 542 124 7171 / +90 535 877 0171",
+  email: "granteduagency.tr@gmail.com",
   working_hours_uz: "Dushanba - Shanba: 09:00 - 18:00",
   working_hours_tr: "Pazartesi - Cumartesi: 09:00 - 18:00",
-  whatsapp_url: "",
-  telegram_url: "",
-  instagram_url: "",
+  whatsapp_url: "https://wa.me/905421247171",
+  telegram_url: "https://t.me/grantedu_uz",
+  instagram_url: "https://instagram.com/grant.edu.agency",
   facebook_url: "",
 };
 

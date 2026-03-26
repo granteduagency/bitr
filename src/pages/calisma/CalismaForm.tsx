@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import { Input, Surface, Label, TextField } from '@heroui/react';
 import { SuccessScreen } from '@/components/shared/SuccessScreen';
+import { IntroVideoOverlay } from '@/components/shared/IntroVideoOverlay';
 import { SubmitButton } from '@/components/shared/SubmitButton';
 import {
   Select,
@@ -82,6 +83,12 @@ export default function CalismaForm() {
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <IntroVideoOverlay
+        enabled={type === 'yurt-ici' || type === 'yurt-disi'}
+        storageKey={`calisma:${type ?? 'default'}-video-seen`}
+        videoId="GB20aiEimmc"
+        title={t('calisma.videoTitle')}
+      />
       <div className="flex items-center gap-4">
         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${isYurtIci ? 'bg-[#C8D5F5]' : 'bg-[#E0D4F0]'}`}>
           {isYurtIci ? <Briefcase className="h-7 w-7 text-[#4A6EC5]" /> : <Plane className="h-7 w-7 text-[#7B5EA7]" />}

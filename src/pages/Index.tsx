@@ -665,7 +665,6 @@ const Index = () => {
                     }
                     onCountryChange={(country) => {
                       setPhoneCountry(country);
-                      setTouched((prev) => ({ ...prev, phone: true }));
                     }}
                     onBlur={() => setTouched((prev) => ({ ...prev, phone: true }))}
                     placeholder={t("landing.phonePlaceholder")}
